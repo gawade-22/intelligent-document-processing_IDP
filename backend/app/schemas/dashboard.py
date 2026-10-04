@@ -164,6 +164,31 @@ class DashboardDocumentListResponse(BaseModel):
     )
 
 
+class FieldMetricItem(BaseModel):
+    """Field-level extraction performance metrics."""
+
+    field_name: str = Field(description="System identifier of the field")
+    label: str = Field(description="Human-readable label for the field")
+    detected_count: int = Field(default=0, description="Number of times field was extracted")
+    total_evaluated: int = Field(default=0, description="Total records evaluated for this field")
+    detection_rate: float = Field(default=0.0, description="Percentage of records where field was found (0-100)")
+    average_confidence: float = Field(default=0.0, description="Average confidence score for this field (0-1)")
+    sources: Dict[str, int] = Field(default_factory=dict, description="Counts by extraction source (e.g. rule, ai, ocr)")
+
+
+class ExtractionRecordAnalytics(BaseModel):
+    """Aggregated analytics computed across all files extraction records."""
+
+    total_records: int = Field(default=0, description="Total document records in database")
+    automation_rate: float = Field(default=0.0, description="Straight-Through Processing automation percentage")
+    average_confidence: float = Field(default=0.0, description="Mean extraction confidence across records")
+    high_confidence_count: int = Field(default=0, description="Count of extractions with confidence >= 0.85")
+    review_required_count: int = Field(default=0, description="Count of extractions needing human triage")
+    fields_breakdown: List[FieldMetricItem] = Field(default_factory=list, description="Performance per extracted field")
+    text_sources: Dict[str, int] = Field(default_factory=dict, description="Distribution of extraction channels (OCR, PDF, etc)")
+    confidence_tiers: Dict[str, int] = Field(default_factory=dict, description="Tier counts (high, medium, low)")
+
+
 class DashboardStatsResponse(BaseModel):
     """Summary statistics response schema for GET /api/documents/stats.
 
@@ -247,6 +272,10 @@ class DashboardStatsResponse(BaseModel):
         ge=0.0,
         le=100.0,
         description="Percentage of processed documents successfully verified",
+    )
+    extraction_analytics: Optional[ExtractionRecordAnalytics] = Field(
+        default=None,
+        description="Comprehensive files extraction record analytics",
     )
 
     model_config = ConfigDict(

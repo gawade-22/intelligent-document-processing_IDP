@@ -75,6 +75,8 @@ from app.services.normalizer import InvoiceNormalizer
 from app.services.ocr_engine import ocr_engine
 from app.services.pdf_parser import pdf_parser
 from app.services.validator import InvoiceValidator
+from app.services.document_classifier import document_classifier
+from app.services.multi_type_extractor import multi_type_extractor
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +148,7 @@ class DocumentProcessingPipeline:
             return self._execute_pipeline(
                 document_id=document_id,
                 session=session,
-                ai_provider_override=ai_provider,
+                ai_provider=ai_provider,
             )
         finally:
             if close_session:
@@ -156,7 +158,7 @@ class DocumentProcessingPipeline:
         self,
         document_id: int,
         session: Session,
-        ai_provider_override: Optional[AIExtractionProvider] = None,
+        ai_provider: Optional[AIExtractionProvider] = None,
     ) -> PipelineProcessingResult:
         """Internal execution method running within a session context."""
 
@@ -349,10 +351,15 @@ class DocumentProcessingPipeline:
             text_source = context.text_source
 
             # -----------------------------------------------------------------
-            # 6. Field Extraction + AI Extraction + Reconciliation
+            # 6. Document Type Classification & Field Extraction
             # -----------------------------------------------------------------
+            doc_type_classified, doc_type_conf = document_classifier.classify(
+                text=raw_text,
+                filename=document.file_name,
+            )
+
             effective_ai = (
-                ai_provider_override
+                ai_provider
                 or self._ai_provider
                 or get_ai_provider()
             )
@@ -361,7 +368,7 @@ class DocumentProcessingPipeline:
                 "document_id": document.id,
                 "file_name": document.file_name,
                 "file_type": detected_category.value,
-                "document_type": "invoice",
+                "document_type": doc_type_classified,
             }
 
             extraction_result: InvoiceExtractionResult = (
@@ -474,56 +481,107 @@ class DocumentProcessingPipeline:
             )
             a_src = self._get_field_source("total_amount", extraction_result)
 
+            # Universal multi-type field extraction across all 13 supported classes
+            multi_fields = multi_type_extractor.extract_all(
+                text=raw_text,
+                document_type=doc_type_classified,
+                ai_provider=effective_ai,
+                context=extraction_context,
+                filename=document.file_name,
+            )
+
+            final_fields_dict: Dict[str, Any] = dict(multi_fields)
+
+            # Reconcile invoice specific normalized fields if present
+            if doc_type_classified in ("invoice", "general"):
+                if "vendor_name" in final_fields_dict and v_val:
+                    final_fields_dict["vendor_name"]["original_value"] = v_val
+                    final_fields_dict["vendor_name"]["value"] = v_val
+                    final_fields_dict["vendor_name"]["normalized_value"] = v_val
+                    if v_conf > 0:
+                        final_fields_dict["vendor_name"]["confidence"] = max(final_fields_dict["vendor_name"]["confidence"], v_conf)
+                    final_fields_dict["vendor_name"]["source"] = v_src
+                if "invoice_number" in final_fields_dict and num_val:
+                    final_fields_dict["invoice_number"]["original_value"] = num_val
+                    final_fields_dict["invoice_number"]["value"] = num_val
+                    final_fields_dict["invoice_number"]["normalized_value"] = num_val
+                    if num_conf > 0:
+                        final_fields_dict["invoice_number"]["confidence"] = max(final_fields_dict["invoice_number"]["confidence"], num_conf)
+                    final_fields_dict["invoice_number"]["source"] = num_src
+                if "invoice_date" in final_fields_dict and d_raw:
+                    final_fields_dict["invoice_date"]["original_value"] = d_raw
+                    final_fields_dict["invoice_date"]["value"] = d_raw
+                    final_fields_dict["invoice_date"]["normalized_value"] = d_norm or d_raw
+                    if d_conf > 0:
+                        final_fields_dict["invoice_date"]["confidence"] = max(final_fields_dict["invoice_date"]["confidence"], d_conf)
+                    final_fields_dict["invoice_date"]["source"] = d_src
+                if "total_amount" in final_fields_dict and a_raw:
+                    final_fields_dict["total_amount"]["original_value"] = a_raw
+                    final_fields_dict["total_amount"]["value"] = a_raw
+                    final_fields_dict["total_amount"]["normalized_value"] = a_norm or a_raw
+                    if a_conf > 0:
+                        final_fields_dict["total_amount"]["confidence"] = max(final_fields_dict["total_amount"]["confidence"], a_conf)
+                    final_fields_dict["total_amount"]["source"] = a_src
+
+            elif doc_type_classified == "receipt":
+                # Ensure receipt-specific fields benefit from invoice extraction if needed
+                if "store_name" in final_fields_dict and not final_fields_dict["store_name"].get("value") and v_val:
+                    final_fields_dict["store_name"]["original_value"] = v_val
+                    final_fields_dict["store_name"]["value"] = v_val
+                    final_fields_dict["store_name"]["normalized_value"] = v_val
+                    final_fields_dict["store_name"]["confidence"] = max(final_fields_dict["store_name"].get("confidence", 0.0), v_conf)
+                    final_fields_dict["store_name"]["source"] = v_src
+                if "receipt_number" in final_fields_dict and not final_fields_dict["receipt_number"].get("value") and num_val:
+                    final_fields_dict["receipt_number"]["original_value"] = num_val
+                    final_fields_dict["receipt_number"]["value"] = num_val
+                    final_fields_dict["receipt_number"]["normalized_value"] = num_val
+                    final_fields_dict["receipt_number"]["confidence"] = max(final_fields_dict["receipt_number"].get("confidence", 0.0), num_conf)
+                    final_fields_dict["receipt_number"]["source"] = num_src
+                if "receipt_date" in final_fields_dict and not final_fields_dict["receipt_date"].get("value") and d_raw:
+                    final_fields_dict["receipt_date"]["original_value"] = d_raw
+                    final_fields_dict["receipt_date"]["value"] = d_raw
+                    final_fields_dict["receipt_date"]["normalized_value"] = d_norm or d_raw
+                    final_fields_dict["receipt_date"]["confidence"] = max(final_fields_dict["receipt_date"].get("confidence", 0.0), d_conf)
+                    final_fields_dict["receipt_date"]["source"] = d_src
+                if "total_amount" in final_fields_dict and not final_fields_dict["total_amount"].get("value") and a_raw:
+                    final_fields_dict["total_amount"]["original_value"] = a_raw
+                    final_fields_dict["total_amount"]["value"] = a_raw
+                    final_fields_dict["total_amount"]["normalized_value"] = a_norm or a_raw
+                    final_fields_dict["total_amount"]["confidence"] = max(final_fields_dict["total_amount"].get("confidence", 0.0), a_conf)
+                    final_fields_dict["total_amount"]["source"] = a_src
+
+            # Calculate composite field confidences
+            computed_field_conf = {k: v.get("confidence", 0.0) for k, v in final_fields_dict.items()}
+
+            if doc_type_classified == "invoice":
+                doc_overall_conf = routing_decision.overall_confidence
+            else:
+                valid_confs = [v.get("confidence", 0.0) for v in final_fields_dict.values() if v.get("value") is not None]
+                doc_overall_conf = round(sum(valid_confs) / max(len(valid_confs), 1), 2) if valid_confs else 0.50
+                if doc_overall_conf >= 0.75 and len(valid_confs) >= 2:
+                    final_status = RoutingStatus.VERIFIED.value
+                    review_reason_str = None
+                else:
+                    final_status = RoutingStatus.NEEDS_REVIEW.value
+                    review_reason_str = "Document fields require verification"
+
             structured_data: Dict[str, Any] = {
-                "fields": {
-                    "vendor_name": {
-                        "field": "vendor_name",
-                        "original_value": v_val,
-                        "value": v_val,
-                        "normalized_value": v_val,
-                        "confidence": v_conf,
-                        "source": v_src,
-                    },
-                    "invoice_number": {
-                        "field": "invoice_number",
-                        "original_value": num_val,
-                        "value": num_val,
-                        "normalized_value": num_val,
-                        "confidence": num_conf,
-                        "source": num_src,
-                    },
-                    "invoice_date": {
-                        "field": "invoice_date",
-                        "original_value": d_raw,
-                        "value": d_raw,
-                        "normalized_value": d_norm,
-                        "confidence": d_conf,
-                        "source": d_src,
-                    },
-                    "total_amount": {
-                        "field": "total_amount",
-                        "original_value": a_raw,
-                        "value": a_raw,
-                        "normalized_value": a_norm,
-                        "confidence": a_conf,
-                        "source": a_src,
-                    },
-                },
-                "field_confidence": extraction_result.field_confidence,
+                "fields": final_fields_dict,
+                "field_confidence": computed_field_conf,
                 "normalization": {
                     "success": normalization_result.success,
                     "errors": normalization_result.errors,
                 },
                 "validation": {
-                    "is_valid": validation_result.is_valid,
-                    "errors": validation_result.errors,
-                    "field_errors": validation_result.field_errors,
+                    "is_valid": validation_result.is_valid if doc_type_classified == "invoice" else (doc_overall_conf >= 0.70),
+                    "errors": validation_result.errors if doc_type_classified == "invoice" else [],
+                    "field_errors": validation_result.field_errors if doc_type_classified == "invoice" else {},
                 },
                 "routing": {
                     "status": final_status,
-                    "overall_confidence": routing_decision.overall_confidence,
+                    "overall_confidence": doc_overall_conf,
                     "threshold": routing_decision.threshold,
-                    "review_reasons": routing_decision.review_reasons,
+                    "review_reasons": [review_reason_str] if review_reason_str else [],
                 },
                 "candidates": {
                     f: [
@@ -533,6 +591,9 @@ class DocumentProcessingPipeline:
                     for f, cands in (extraction_result.candidates or {}).items()
                 },
                 "text_source": text_source,
+                "document_type": doc_type_classified,
+                "document_type_label": document_classifier.get_display_name(doc_type_classified),
+                "document_type_confidence": doc_type_conf,
             }
 
             # Update Document status
@@ -549,10 +610,10 @@ class DocumentProcessingPipeline:
                 record = DocumentRecord(document_id=document.id)
                 session.add(record)
 
-            record.document_type = "invoice"
+            record.document_type = doc_type_classified
             record.extraction_status = final_status
             record.raw_text = raw_text
-            record.confidence_score = routing_decision.overall_confidence
+            record.confidence_score = doc_overall_conf
             record.error_message = review_reason_str
             record.extracted_data = structured_data
 
@@ -599,11 +660,11 @@ class DocumentProcessingPipeline:
                 error=review_reason_str if is_review else None,
                 processing_errors=processing_errors,
                 routing_decision=routing_decision,
-                validation=validation_result,
+                validation=validation_result if doc_type_classified in ("invoice", "receipt", "general") else ValidationResult(is_valid=True, errors=[], field_errors={}),
                 normalization=normalization_result,
                 extraction=extraction_result,
                 extracted_data=structured_data,
-                confidence_score=routing_decision.overall_confidence,
+                confidence_score=doc_overall_conf,
                 raw_text=raw_text,
                 text_source=text_source,
                 record_id=record.id,

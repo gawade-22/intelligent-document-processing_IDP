@@ -108,10 +108,8 @@ class HITLVerificationService:
                             errs.append(str(fe))
 
                     results[field_name] = ReviewFieldItem(
-                        value=str(v) if v is not None else None,
-                        normalized_value=(
-                            str(norm_v) if norm_v is not None else None
-                        ),
+                        value=v,
+                        normalized_value=norm_v,
                         confidence=conf,
                         source=src,
                         validation_errors=sorted(list(set(errs))),
@@ -205,6 +203,9 @@ class HITLVerificationService:
         """
         if raw_value is None:
             return None, None, None
+
+        if isinstance(raw_value, (list, dict)):
+            return raw_value, raw_value, None
 
         raw_str = str(raw_value).strip()
         if not raw_str:

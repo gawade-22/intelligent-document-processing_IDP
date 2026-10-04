@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   Image,
   ChevronDown,
+  Trash2,
 } from 'lucide-react';
 import StatusBadge from './StatusBadge';
 export default function DocumentTable({
@@ -34,6 +35,8 @@ export default function DocumentTable({
   onBatchProcess,
   onAdvancedFilter,
   onUploadClick,
+  onDeleteDocument,
+  onBatchDelete,
   isLoading = false,
   statusCounts = {},
   isDashboard = false,
@@ -80,6 +83,26 @@ export default function DocumentTable({
       return <Image size={15} className="file-type-icon image" />;
     }
     return <FileText size={15} className="file-type-icon pdf" />;
+  };
+
+  const getDocTypeBadge = (type) => {
+    const t = (type || '').toLowerCase();
+    const map = {
+      invoice: { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe', label: 'Invoice' },
+      purchase_order: { bg: '#e0e7ff', color: '#4338ca', border: '#c7d2fe', label: 'Purchase Order' },
+      receipt: { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0', label: 'Receipt' },
+      bank_statement: { bg: '#ecfeff', color: '#0e7490', border: '#a5f3fc', label: 'Bank Statement' },
+      resume: { bg: '#f3e8ff', color: '#6b21a8', border: '#d8b4fe', label: 'Resume/CV' },
+      certificate: { bg: '#fef3c7', color: '#b45309', border: '#fde68a', label: 'Certificate' },
+      contract: { bg: '#f1f5f9', color: '#334155', border: '#cbd5e1', label: 'Contract' },
+      delivery_challan: { bg: '#fff7ed', color: '#c2410c', border: '#ffedd5', label: 'Delivery Challan' },
+      medical_report: { bg: '#ffe4e6', color: '#be123c', border: '#fecdd3', label: 'Medical Report' },
+      insurance: { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4', label: 'Insurance' },
+      id_document: { bg: '#ede9fe', color: '#5b21b6', border: '#ddd6fe', label: 'ID Document' },
+      expense_report: { bg: '#f7fee7', color: '#3f6212', border: '#d9f99d', label: 'Expense Report' },
+      application_form: { bg: '#f0f9ff', color: '#0369a1', border: '#bae6fd', label: 'Application' },
+    };
+    return map[t] || { bg: '#f8fafc', color: '#475569', border: '#e2e8f0', label: type };
   };
 
   const formatConfidence = (doc) => {
@@ -165,6 +188,19 @@ export default function DocumentTable({
         </div>
 
         <div className="toolbar-right">
+          {/* Quick Delete Selected Button */}
+          {selectedIds.length > 0 && onBatchDelete && (
+            <button
+              type="button"
+              className="btn btn-danger-subtle btn-sm"
+              onClick={() => onBatchDelete(selectedIds, () => setSelectedIds([]))}
+              title="Delete Selected Documents"
+            >
+              <Trash2 size={14} />
+              <span>Delete ({selectedIds.length})</span>
+            </button>
+          )}
+
           {/* Advanced Filter Button */}
           {onAdvancedFilter && (
             <button
@@ -209,6 +245,17 @@ export default function DocumentTable({
               <Play size={13} />
               <span>Process Selected</span>
             </button>
+            {onBatchDelete && (
+              <button
+                type="button"
+                className="btn-batch-action danger"
+                onClick={() => onBatchDelete(selectedIds, () => setSelectedIds([]))}
+                title="Delete Selected Documents"
+              >
+                <Trash2 size={13} />
+                <span>Delete Selected</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn-batch-action secondary"
@@ -237,8 +284,8 @@ export default function DocumentTable({
               <th className="col-sr">SR. NO.</th>
               <th className="col-doc">DOCUMENT</th>
               <th className="col-type">TYPE</th>
-              <th className="col-vendor">VENDOR</th>
-              <th className="col-inv">INVOICE NO.</th>
+              <th className="col-vendor">VENDOR / ENTITY</th>
+              <th className="col-inv">IDENTIFIER / NO.</th>
               <th className="col-status">STATUS</th>
               <th className="col-conf">CONFIDENCE</th>
               <th className="col-date">UPDATED</th>
@@ -318,31 +365,75 @@ export default function DocumentTable({
 
                     {/* TYPE */}
                     <td className="col-type">
-                      <span className="file-format-pill">
-                        {doc.file_type || doc.document_type || 'PDF'}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                        <span className="file-format-pill">
+                          {doc.file_type || 'PDF'}
+                        </span>
+                        {doc.document_type && (() => {
+                          const badge = getDocTypeBadge(doc.document_type);
+                          return (
+                            <span
+                              className="doc-type-badge-mini"
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: '600',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                backgroundColor: badge.bg,
+                                color: badge.color,
+                                border: `1px solid ${badge.border}`,
+                                textTransform: 'capitalize',
+                                letterSpacing: '0.2px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
 
-                    {/* VENDOR */}
+                    {/* VENDOR / ENTITY */}
                     <td className="col-vendor">
-                      {doc.vendor_name ? (
-                        <span className="vendor-text" title={doc.vendor_name}>
-                          {doc.vendor_name}
-                        </span>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
+                      {(() => {
+                        const entityName =
+                          doc.vendor_name ||
+                          doc.store_name ||
+                          doc.account_holder ||
+                          doc.candidate_name ||
+                          doc.person_name ||
+                          doc.patient_name ||
+                          doc.buyer_name;
+                        return entityName ? (
+                          <span className="vendor-text" title={entityName}>
+                            {entityName}
+                          </span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        );
+                      })()}
                     </td>
 
-                    {/* INVOICE NO. */}
+                    {/* IDENTIFIER / NO. */}
                     <td className="col-inv">
-                      {doc.invoice_number ? (
-                        <span className="inv-no-text font-mono">
-                          {doc.invoice_number}
-                        </span>
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
+                      {(() => {
+                        const refNo =
+                          doc.invoice_number ||
+                          doc.receipt_number ||
+                          doc.po_number ||
+                          doc.account_number ||
+                          doc.certificate_id ||
+                          doc.id_number ||
+                          doc.challan_number;
+                        return refNo ? (
+                          <span className="inv-no-text font-mono" title={refNo}>
+                            {refNo}
+                          </span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        );
+                      })()}
                     </td>
 
                     {/* STATUS using reusable StatusBadge */}
@@ -360,58 +451,90 @@ export default function DocumentTable({
                       {formatTimestamp(doc.updated_at || doc.uploaded_at)}
                     </td>
 
-                    {/* ACTION MENU (Simple ⋮ with View Details and Review) */}
+                    {/* ACTION MENU */}
                     <td className="col-actions" onClick={(e) => e.stopPropagation()}>
-                      <div className="action-menu-container">
-                        <button
-                          type="button"
-                          className="action-menu-trigger"
-                          onClick={(e) => toggleActionMenu(docId, e)}
-                          aria-label="Document actions"
-                          title="Actions"
-                        >
-                          ⋮
-                        </button>
+                      <div className="table-actions-cell-wrapper">
+                        {onDeleteDocument && (
+                          <button
+                            type="button"
+                            className="table-action-btn delete-action-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteDocument(doc);
+                            }}
+                            title={`Delete ${doc.file_name}`}
+                            aria-label={`Delete ${doc.file_name}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
 
-                        {isMenuOpen && (
-                          <div className="action-dropdown-menu" role="menu">
-                            <button
-                              type="button"
-                              className="dropdown-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setActiveMenuId(null);
-                                if (onViewDetails) {
-                                  onViewDetails(docId);
-                                } else if (onViewDocument) {
-                                  onViewDocument(doc);
-                                }
-                              }}
-                            >
-                              <Eye size={14} className="dropdown-icon" />
-                              <span>View Details</span>
-                            </button>
+                        <div className="action-menu-container">
+                          <button
+                            type="button"
+                            className="action-menu-trigger"
+                            onClick={(e) => toggleActionMenu(docId, e)}
+                            aria-label="Document actions"
+                            title="Actions"
+                          >
+                            ⋮
+                          </button>
 
-                            {(doc.status === 'NEEDS_REVIEW' || doc.needs_review) && (
+                          {isMenuOpen && (
+                            <div className="action-dropdown-menu" role="menu">
                               <button
                                 type="button"
-                                className="dropdown-item highlight"
+                                className="dropdown-item"
                                 role="menuitem"
                                 onClick={() => {
                                   setActiveMenuId(null);
-                                  if (onReviewDocument) {
-                                    onReviewDocument(doc);
-                                  } else if (onVerifyDocument) {
-                                    onVerifyDocument(doc);
+                                  if (onViewDetails) {
+                                    onViewDetails(docId);
+                                  } else if (onViewDocument) {
+                                    onViewDocument(doc);
                                   }
                                 }}
                               >
-                                <CheckSquare size={14} className="dropdown-icon" />
-                                <span>Review</span>
+                                <Eye size={14} className="dropdown-icon" />
+                                <span>View Details</span>
                               </button>
-                            )}
-                          </div>
-                        )}
+
+                              {(doc.status === 'NEEDS_REVIEW' || doc.needs_review) && (
+                                <button
+                                  type="button"
+                                  className="dropdown-item highlight"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    if (onReviewDocument) {
+                                      onReviewDocument(doc);
+                                    } else if (onVerifyDocument) {
+                                      onVerifyDocument(doc);
+                                    }
+                                  }}
+                                >
+                                  <CheckSquare size={14} className="dropdown-icon" />
+                                  <span>Review</span>
+                                </button>
+                              )}
+
+                              {onDeleteDocument && (
+                                <button
+                                  type="button"
+                                  className="dropdown-item danger"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    onDeleteDocument(doc);
+                                  }}
+                                >
+                                  <Trash2 size={14} className="dropdown-icon" />
+                                  <span>Delete Document</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>

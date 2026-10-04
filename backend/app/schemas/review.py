@@ -13,14 +13,14 @@ class ReviewFieldItem(BaseModel):
     """Universal field item representation for HITL review.
 
     Handles arbitrary document fields (e.g., student_name, roll_number,
-    employee_id, vendor_name, total_amount, etc.).
+    employee_id, vendor_name, total_amount, tabular items, etc.).
     """
 
-    value: Optional[str] = Field(
+    value: Optional[Any] = Field(
         default=None,
-        description="Current raw or entered string value of the field",
+        description="Current raw or entered value of the field (scalar or list)",
     )
-    normalized_value: Optional[str] = Field(
+    normalized_value: Optional[Any] = Field(
         default=None,
         description="Standardized machine-readable value",
     )
@@ -51,6 +51,8 @@ class ReviewDocumentSummary(BaseModel):
     file_name: str
     file_type: str
     status: str
+    document_type: Optional[str] = None
+    document_type_label: Optional[str] = None
     uploaded_at: datetime
     updated_at: Optional[datetime] = None
     fields: Dict[str, ReviewFieldItem] = Field(default_factory=dict)
@@ -129,6 +131,8 @@ class ReviewDocumentDetailResponse(BaseModel):
     file_name: str
     file_type: str
     status: str
+    document_type: Optional[str] = None
+    document_type_label: Optional[str] = None
     document: DocumentViewerInfo
     fields: Dict[str, ReviewFieldItem] = Field(default_factory=dict)
     validation_errors: List[str] = Field(default_factory=list)

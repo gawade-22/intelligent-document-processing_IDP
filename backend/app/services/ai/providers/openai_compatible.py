@@ -8,9 +8,10 @@ import json
 import logging
 import re
 import socket
+import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.core.config import settings
 from app.services.ai.base import AIExtractionProvider
@@ -140,132 +141,25 @@ class OpenAICompatibleProvider(AIExtractionProvider):
             "User-Agent": "IDP-Invoice-Extractor/1.0",
         }
 
-        req = urllib.request.Request(endpoint_url, data=req_data, headers=headers, method="POST")
-
-        # 4. Execute HTTP Request with Error Mapping
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                resp_bytes = response.read()
-                resp_text = resp_bytes.decode("utf-8", errors="replace")
-        except urllib.error.HTTPError as http_err:
-            status_code = http_err.code
-            err_body = ""
-            try:
-                err_body = http_err.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
-
-            if status_code == 429:
-                err_msg = f"Rate limit exceeded (HTTP 429) from {self.provider_name}"
-                logger.warning(err_msg)
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.RATE_LIMITED.value,
-                    fields=None,
-                    raw_response=err_body,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=[err_msg],
+        # 4. Execute HTTP Request with Error Mapping and Automatic Retries
+        raw_content, err_msg, status_code = self._execute_http_completion(endpoint_url, payload)
+        if err_msg or not raw_content:
+            status = (
+                AIExtractionStatus.RATE_LIMITED.value
+                if status_code == 429
+                else (
+                    AIExtractionStatus.TIMEOUT.value
+                    if "timed out" in (err_msg or "").lower()
+                    else AIExtractionStatus.API_ERROR.value
                 )
-            elif status_code in (401, 403):
-                err_msg = f"Authentication failed (HTTP {status_code}) from {self.provider_name}"
-                logger.warning(err_msg)
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.API_ERROR.value,
-                    fields=None,
-                    raw_response=err_body,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=[err_msg],
-                )
-            else:
-                err_msg = f"HTTP error {status_code} from {self.provider_name}: {http_err.reason}"
-                logger.warning(err_msg)
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.API_ERROR.value,
-                    fields=None,
-                    raw_response=err_body,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=[err_msg],
-                )
-        except (socket.timeout, TimeoutError) as timeout_err:
-            err_msg = f"Request timed out after {self.timeout}s: {timeout_err}"
-            logger.warning(err_msg)
+            )
             return AIExtractionResponse(
-                status=AIExtractionStatus.TIMEOUT.value,
+                status=status,
                 fields=None,
                 raw_response=None,
                 model=self.model,
                 provider=self.provider_name,
-                errors=[err_msg],
-            )
-        except urllib.error.URLError as url_err:
-            # Check if reason is a socket timeout
-            if isinstance(url_err.reason, (socket.timeout, TimeoutError)):
-                err_msg = f"Request timed out after {self.timeout}s"
-                logger.warning(err_msg)
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.TIMEOUT.value,
-                    fields=None,
-                    raw_response=None,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=[err_msg],
-                )
-            err_msg = f"Network/connection error connecting to {self.provider_name}: {url_err.reason}"
-            logger.warning(err_msg)
-            return AIExtractionResponse(
-                status=AIExtractionStatus.API_ERROR.value,
-                fields=None,
-                raw_response=None,
-                model=self.model,
-                provider=self.provider_name,
-                errors=[err_msg],
-            )
-        except Exception as exc:
-            err_msg = f"Unexpected error during AI extraction request: {str(exc)}"
-            logger.error(err_msg, exc_info=True)
-            return AIExtractionResponse(
-                status=AIExtractionStatus.API_ERROR.value,
-                fields=None,
-                raw_response=None,
-                model=self.model,
-                provider=self.provider_name,
-                errors=[err_msg],
-            )
-
-        # 5. Parse Top-level Completion Payload
-        try:
-            data = json.loads(resp_text)
-            choices = data.get("choices", [])
-            if not choices:
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.PARSING_ERROR.value,
-                    fields=None,
-                    raw_response=resp_text,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=["OpenAI response contained no choices"],
-                )
-            raw_content = choices[0].get("message", {}).get("content", "")
-            if not raw_content or not str(raw_content).strip():
-                return AIExtractionResponse(
-                    status=AIExtractionStatus.PARSING_ERROR.value,
-                    fields=None,
-                    raw_response=resp_text,
-                    model=self.model,
-                    provider=self.provider_name,
-                    errors=["Model returned empty message content"],
-                )
-        except Exception as exc:
-            err_msg = f"Failed to parse outer JSON completion response: {str(exc)}"
-            return AIExtractionResponse(
-                status=AIExtractionStatus.PARSING_ERROR.value,
-                fields=None,
-                raw_response=resp_text,
-                model=self.model,
-                provider=self.provider_name,
-                errors=[err_msg],
+                errors=[err_msg or "Model returned empty message content"],
             )
 
         # 6. Clean Markdown Fences & Validate Structured Fields
@@ -327,6 +221,91 @@ class OpenAICompatibleProvider(AIExtractionProvider):
             errors=[],
         )
 
+    def _execute_http_completion(
+        self,
+        endpoint_url: str,
+        payload: dict,
+        max_retries: int = 3,
+    ) -> Tuple[Optional[str], Optional[str], Optional[int]]:
+        """
+        Executes an HTTP POST completion with exponential backoff retry for transient errors
+        (HTTP 429 rate limit, HTTP 500/502/503/504 server overload, socket timeouts).
+        Returns:
+            Tuple of (raw_content_str, error_message_or_None, status_code_or_None)
+        """
+        req_data = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key.strip()}",
+            "Content-Type": "application/json",
+            "User-Agent": "IDP-Document-Extractor/1.0",
+        }
+
+        last_err = ""
+        last_code = None
+        for attempt in range(max_retries):
+            req = urllib.request.Request(endpoint_url, data=req_data, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                    resp_bytes = response.read()
+                    resp_text = resp_bytes.decode("utf-8", errors="replace")
+
+                data = json.loads(resp_text)
+                choices = data.get("choices", [])
+                if not choices:
+                    return None, f"Response contained no choices: {resp_text[:200]}", 200
+                raw_content = choices[0].get("message", {}).get("content", "")
+                return raw_content, None, 200
+
+            except urllib.error.HTTPError as http_err:
+                last_code = http_err.code
+                err_body = ""
+                try:
+                    err_body = http_err.read().decode("utf-8", errors="replace")
+                except Exception:
+                    pass
+
+                if last_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1.5
+                    logger.warning(
+                        f"Transient HTTP {last_code} from {self.provider_name}. "
+                        f"Retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})... Response: {err_body[:150]}"
+                    )
+                    time.sleep(wait_time)
+                    continue
+
+                if last_code == 429:
+                    last_err = f"Rate limit exceeded (HTTP 429) from {self.provider_name}: {err_body or http_err.reason}"
+                elif last_code == 401:
+                    last_err = f"Authentication failed (HTTP 401) from {self.provider_name}: {err_body or http_err.reason}"
+                else:
+                    last_err = f"HTTP error {last_code} from {self.provider_name}: {err_body or http_err.reason}"
+                logger.warning(last_err)
+                break
+
+            except (socket.timeout, TimeoutError) as timeout_err:
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1.0
+                    logger.warning(f"Request timeout from {self.provider_name}. Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                    continue
+                last_err = f"Request timed out after {self.timeout}s"
+                break
+
+            except urllib.error.URLError as url_err:
+                if attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 1.0
+                    logger.warning(f"Connection error to {self.provider_name}: {url_err.reason}. Retrying...")
+                    time.sleep(wait_time)
+                    continue
+                last_err = f"Connection error to {self.provider_name}: {url_err.reason}"
+                break
+
+            except Exception as exc:
+                last_err = f"Unexpected error during AI completion: {exc}"
+                break
+
+        return None, last_err, last_code
+
     def extract_document(
         self,
         text: str,
@@ -336,7 +315,7 @@ class OpenAICompatibleProvider(AIExtractionProvider):
     ) -> Any:
         """
         Generic multi-document extraction via LLM completions.
-        Builds prompt using build_extraction_prompt and delegates to chat completions.
+        Builds prompt using build_extraction_prompt and delegates to chat completions with retries.
         """
         if not self.api_key or not self.api_key.strip():
             return AIExtractionResponse(
@@ -369,34 +348,38 @@ class OpenAICompatibleProvider(AIExtractionProvider):
             "response_format": {"type": "json_object"},
         }
 
-        req_data = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Authorization": f"Bearer {self.api_key.strip()}",
-            "Content-Type": "application/json",
-            "User-Agent": "IDP-Document-Extractor/1.0",
-        }
-
-        req = urllib.request.Request(endpoint_url, data=req_data, headers=headers, method="POST")
-
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                resp_bytes = response.read()
-                resp_text = resp_bytes.decode("utf-8", errors="replace")
-
-            data = json.loads(resp_text)
-            choices = data.get("choices", [])
-            raw_content = choices[0].get("message", {}).get("content", "") if choices else ""
-            cleaned = self._clean_markdown_fences(raw_content)
-            parsed_data = json.loads(cleaned)
-
+        raw_content, err_msg, status_code = self._execute_http_completion(endpoint_url, payload)
+        if err_msg or not raw_content:
+            logger.warning(f"extract_document error: {err_msg}")
+            # Fall back to extract_invoice only if invoice-like
+            if document_type.lower() in ("invoice", "bill"):
+                return self.extract_invoice(text=text, context=context)
             return {
-                "status": "SUCCESS",
+                "status": "API_ERROR",
                 "raw_response": raw_content,
-                "fields": parsed_data.get("fields", parsed_data),
+                "fields": {},
                 "model": self.model,
                 "provider": self.provider_name,
+                "error": err_msg,
             }
+
+        cleaned = self._clean_markdown_fences(raw_content)
+        try:
+            parsed_data = json.loads(cleaned)
         except Exception as exc:
-            logger.warning(f"extract_document error: {exc}")
-            # Fall back to extract_invoice
-            return self.extract_invoice(text=text, context=context)
+            return {
+                "status": "PARSING_ERROR",
+                "raw_response": raw_content,
+                "fields": {},
+                "model": self.model,
+                "provider": self.provider_name,
+                "error": f"Failed to parse JSON response: {exc}",
+            }
+
+        return {
+            "status": "SUCCESS",
+            "raw_response": raw_content,
+            "fields": parsed_data.get("fields", parsed_data),
+            "model": self.model,
+            "provider": self.provider_name,
+        }

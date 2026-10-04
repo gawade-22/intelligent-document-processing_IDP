@@ -147,7 +147,7 @@ export default function ReviewQueueView({ onOpenVerify, onOpenView }) {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => onOpenVerify(doc)}
+                    onClick={() => onOpenVerify(doc.id || doc.document_id)}
                   >
                     <CheckSquare size={16} />
                     <span>Verify & Correct</span>
@@ -156,7 +156,7 @@ export default function ReviewQueueView({ onOpenVerify, onOpenView }) {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={() => onOpenView(doc)}
+                    onClick={() => onOpenView(doc.id || doc.document_id)}
                   >
                     <Eye size={14} />
                     <span>Inspect Raw Data</span>

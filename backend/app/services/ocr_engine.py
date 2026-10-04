@@ -21,10 +21,11 @@ SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 ALL_SUPPORTED_EXTENSIONS = SUPPORTED_IMAGE_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
 
-# Configurable Tesseract Page Segmentation Mode (PSM)
+# Configurable Tesseract Page Segmentation Mode (PSM) and Language
 # PSM 6 = Assume a single uniform block of text (optimal for structured forms and invoices)
 # PSM 3 = Fully automatic page segmentation (general multi-column layout)
-DEFAULT_OCR_PSM_MODE: int = getattr(settings, "OCR_PSM_MODE", 6)
+DEFAULT_OCR_PSM_MODE: int = getattr(settings, "OCR_PSM", getattr(settings, "OCR_PSM_MODE", 6))
+DEFAULT_OCR_LANGUAGE: str = getattr(settings, "OCR_LANGUAGE", "eng")
 
 
 class OcrEngineError(Exception):
@@ -60,25 +61,58 @@ class OcrEngine:
     def __init__(self) -> None:
         self._configure_tesseract()
 
-    def _configure_tesseract(self) -> None:
+    @classmethod
+    def resolve_tesseract_cmd(cls) -> Optional[str]:
         """
-        Configures Tesseract executable path if specified in environment/settings.
-        Defaults to system PATH if TESSERACT_CMD is not set.
+        Resolves the Tesseract executable path:
+        1. If TESSERACT_CMD is set and contains a valid executable path, use it.
+        2. If TESSERACT_CMD is empty/None, use the system PATH.
+        3. If TESSERACT_CMD contains a path that does not exist, log a warning
+           and fall back to system PATH.
+        Returns the resolved path/executable string, or None if unavailable.
         """
-        tesseract_cmd = settings.TESSERACT_CMD or os.getenv("TESSERACT_CMD")
-        if tesseract_cmd:
-            pytesseract.pytesseract.tesseract_cmd = str(tesseract_cmd).strip()
-            logger.info(f"Tesseract executable configured from environment: {tesseract_cmd}")
+        cmd_setting = getattr(settings, "TESSERACT_CMD", None)
+        if cmd_setting and str(cmd_setting).strip():
+            candidate = str(cmd_setting).strip()
+            cand_path = Path(candidate)
+            if cand_path.is_file():
+                return str(cand_path)
+            # If candidate was provided as executable name in PATH
+            which_cand = shutil.which(candidate)
+            if which_cand:
+                return which_cand
+            logger.warning(
+                f"Configured TESSERACT_CMD '{candidate}' does not exist on disk. "
+                "Falling back to system PATH."
+            )
+
+        # Fall back to finding 'tesseract' on system PATH
+        return shutil.which("tesseract")
+
+    @classmethod
+    def _configure_tesseract(cls) -> None:
+        """
+        Configures pytesseract executable path based on resolved Tesseract command.
+        """
+        resolved_cmd = cls.resolve_tesseract_cmd()
+        if resolved_cmd:
+            pytesseract.pytesseract.tesseract_cmd = resolved_cmd
+            logger.info(f"Tesseract executable configured: {resolved_cmd}")
+        else:
+            pytesseract.pytesseract.tesseract_cmd = "tesseract"
 
     @classmethod
     def is_tesseract_available(cls) -> bool:
         """
         Checks whether the Tesseract OCR engine is available and executable.
+        Supports both explicit TESSERACT_CMD path and system PATH.
         """
-        configured_cmd = pytesseract.pytesseract.tesseract_cmd
+        configured_cmd = getattr(pytesseract.pytesseract, "tesseract_cmd", None)
         if configured_cmd and configured_cmd != "tesseract":
-            return Path(configured_cmd).exists()
-        return shutil.which("tesseract") is not None
+            if Path(configured_cmd).is_file():
+                return True
+        resolved = cls.resolve_tesseract_cmd()
+        return resolved is not None
 
     @classmethod
     def is_poppler_available(cls) -> bool:
@@ -162,6 +196,7 @@ class OcrEngine:
         image: Union[np.ndarray, Image.Image],
         page_number: int = 1,
         psm: Optional[int] = None,
+        lang: Optional[str] = None,
     ) -> OCRPageData:
         """
         Preprocesses an image and runs Tesseract OCR to extract word-level
@@ -171,11 +206,13 @@ class OcrEngine:
             image: Image object or numpy array for the page.
             page_number: 1-indexed page number.
             psm: Page segmentation mode (defaults to DEFAULT_OCR_PSM_MODE / 6).
+            lang: OCR language (defaults to DEFAULT_OCR_LANGUAGE / "eng").
 
         Returns:
             OCRPageData: Per-page structured OCR result.
         """
         effective_psm = psm if psm is not None else DEFAULT_OCR_PSM_MODE
+        effective_lang = lang if lang is not None else DEFAULT_OCR_LANGUAGE
         tess_config = f"--psm {effective_psm}"
         try:
             # Preprocess image with OpenCV (Original -> Grayscale -> Denoise -> Otsu Threshold)
@@ -186,6 +223,7 @@ class OcrEngine:
                 preprocessed_img,
                 output_type=Output.DICT,
                 config=tess_config,
+                lang=effective_lang,
             )
 
             # Capture direct raw string output via image_to_string
@@ -193,9 +231,23 @@ class OcrEngine:
                 raw_ocr_string = pytesseract.image_to_string(
                     preprocessed_img,
                     config=tess_config,
+                    lang=effective_lang,
                 ).strip()
             except Exception:
                 raw_ocr_string = ""
+        except pytesseract.TesseractNotFoundError:
+            logger.error("Tesseract executable was not found during OCR execution.")
+            return OCRPageData(
+                page_number=page_number,
+                raw_text="",
+                text="",
+                words=[],
+                character_count=0,
+                word_count=0,
+                average_confidence=0.0,
+                has_text=False,
+                error="Tesseract OCR engine is not installed or not found in system PATH.",
+            )
         except Exception as exc:
             logger.warning(f"OCR execution failed on page {page_number}: {exc}", exc_info=True)
             return OCRPageData(
@@ -279,17 +331,17 @@ class OcrEngine:
         # Reconstruct page text preserving lines
         reconstructed_lines = [" ".join(words) for words in lines_dict.values()]
         page_text = "\n".join(reconstructed_lines).strip()
-        final_raw_text = raw_ocr_string if raw_ocr_string else page_text
+        final_text = page_text if page_text else raw_ocr_string
 
         avg_confidence = round(float(np.mean(confidences)), 2) if confidences else 0.0
-        char_count = len(final_raw_text)
+        char_count = len(final_text)
         word_count = len(words_list)
         has_text = bool(word_count > 0 and char_count > 0)
 
         return OCRPageData(
             page_number=page_number,
-            raw_text=final_raw_text,
-            text=final_raw_text,
+            raw_text=final_text,
+            text=final_text,
             words=words_list,
             character_count=char_count,
             word_count=word_count,
@@ -307,13 +359,15 @@ class OcrEngine:
         cls,
         file_path: Union[Path, str],
         psm: Optional[int] = None,
+        lang: Optional[str] = None,
     ) -> OCRResult:
         """
         Executes OCR on an image file (.png, .jpg, .jpeg).
 
         Args:
             file_path: Path to the image file.
-            psm: Page segmentation mode (defaults to settings.OCR_PSM_MODE or 6).
+            psm: Page segmentation mode (defaults to settings.OCR_PSM or 6).
+            lang: OCR language (defaults to settings.OCR_LANGUAGE or "eng").
 
         Returns:
             OCRResult: Structured document OCR result with bounding boxes and metrics.
@@ -345,7 +399,7 @@ class OcrEngine:
             except Exception:
                 pass
 
-            page_data = cls.extract_page_ocr(pil_image, page_number=1, psm=psm)
+            page_data = cls.extract_page_ocr(pil_image, page_number=1, psm=psm, lang=lang)
             status = "OCR_COMPLETED" if page_data.has_text else "NO_TEXT_DETECTED"
 
             return OCRResult(
@@ -367,6 +421,8 @@ class OcrEngine:
                     "format": pil_image.format,
                 },
             )
+        except pytesseract.TesseractNotFoundError:
+            return cls._tesseract_not_found_result(file_type="IMAGE")
         except Exception as exc:
             logger.error(f"Failed to process image '{path.name}': {exc}", exc_info=True)
             return OCRResult(
@@ -388,6 +444,7 @@ class OcrEngine:
         file_path: Union[Path, str],
         dpi: Optional[int] = None,
         psm: Optional[int] = None,
+        lang: Optional[str] = None,
     ) -> OCRResult:
         """
         Executes OCR on a scanned multi-page PDF document:
@@ -400,7 +457,8 @@ class OcrEngine:
         Args:
             file_path: Path to the PDF file.
             dpi: Resolution for PDF rendering (defaults to settings.OCR_PDF_DPI or 300).
-            psm: Page segmentation mode (defaults to settings.OCR_PSM_MODE or 6).
+            psm: Page segmentation mode (defaults to settings.OCR_PSM or 6).
+            lang: OCR language (defaults to settings.OCR_LANGUAGE or "eng").
 
         Returns:
             OCRResult: Structured document OCR result.
@@ -426,33 +484,61 @@ class OcrEngine:
         poppler_path = settings.POPPLER_PATH or os.getenv("POPPLER_PATH")
         from pdf2image import convert_from_path
 
+        pages_images = []
         try:
-            # Convert PDF pages into list of PIL Images
+            # First attempt: pdf2image with Poppler (high DPI full-page rendering)
             kwargs: Dict[str, Any] = {"dpi": effective_dpi}
             if poppler_path:
                 kwargs["poppler_path"] = str(poppler_path)
 
             pages_images = convert_from_path(str(path), **kwargs)
         except Exception as poppler_err:
-            logger.error(f"pdf2image conversion failed for '{path.name}': {poppler_err}", exc_info=True)
-            err_msg = str(poppler_err).lower()
-            if "poppler" in err_msg or not cls.is_poppler_available():
+            logger.info(
+                f"pdf2image (poppler) rendering unavailable for '{path.name}': {poppler_err}. "
+                "Attempting fallback image extraction via pypdf."
+            )
+            # Second attempt: Extract embedded scanned images directly from PDF stream using pypdf
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(str(path))
+                for page_idx, page in enumerate(reader.pages):
+                    if hasattr(page, "images") and len(page.images) > 0:
+                        # Find the primary/largest image on this page
+                        best_img = None
+                        best_size = 0
+                        for img_item in page.images:
+                            try:
+                                pil_img = img_item.image
+                                sz = pil_img.width * pil_img.height
+                                if sz > best_size:
+                                    best_size = sz
+                                    best_img = pil_img
+                            except Exception:
+                                continue
+                        if best_img:
+                            pages_images.append(best_img)
+            except Exception as pypdf_err:
+                logger.error(f"Fallback embedded image extraction via pypdf failed: {pypdf_err}")
+
+            if not pages_images:
+                err_msg = str(poppler_err).lower()
+                if "poppler" in err_msg or not cls.is_poppler_available():
+                    return OCRResult(
+                        success=False,
+                        status="POPPLER_NOT_FOUND",
+                        error="Poppler is not installed or not configured in system PATH / POPPLER_PATH, and no embedded images could be extracted for PDF OCR.",
+                        file_type="PDF",
+                        page_count=0,
+                        pages=[],
+                    )
                 return OCRResult(
                     success=False,
-                    status="POPPLER_NOT_FOUND",
-                    error="Poppler is not installed or not configured in system PATH / POPPLER_PATH. Required for PDF OCR.",
+                    status="OCR_FAILED",
+                    error="Unable to render or extract PDF pages into images for OCR.",
                     file_type="PDF",
                     page_count=0,
                     pages=[],
                 )
-            return OCRResult(
-                success=False,
-                status="OCR_FAILED",
-                error="Unable to render PDF pages into images for OCR.",
-                file_type="PDF",
-                page_count=0,
-                pages=[],
-            )
 
         if not pages_images:
             return OCRResult(
@@ -472,7 +558,7 @@ class OcrEngine:
         for idx, page_img in enumerate(pages_images):
             page_num = idx + 1
             try:
-                page_res = cls.extract_page_ocr(page_img, page_number=page_num, psm=psm)
+                page_res = cls.extract_page_ocr(page_img, page_number=page_num, psm=psm, lang=lang)
                 pages_data.append(page_res)
                 if page_res.error:
                     page_errors.append(f"Page {page_num}: {page_res.error}")
@@ -541,6 +627,7 @@ class OcrEngine:
         file_path: Union[Path, str],
         dpi: Optional[int] = None,
         psm: Optional[int] = None,
+        lang: Optional[str] = None,
     ) -> OCRResult:
         """
         Universal entry point: automatically determines file format (.png, .jpg, .jpeg, .pdf)
@@ -560,9 +647,9 @@ class OcrEngine:
 
         ext = path.suffix.lower()
         if ext in SUPPORTED_IMAGE_EXTENSIONS:
-            return cls.process_image(path, psm=psm)
+            return cls.process_image(path, psm=psm, lang=lang)
         elif ext in SUPPORTED_PDF_EXTENSIONS:
-            return cls.process_pdf(path, dpi=dpi, psm=psm)
+            return cls.process_pdf(path, dpi=dpi, psm=psm, lang=lang)
         else:
             return OCRResult(
                 success=False,
@@ -579,12 +666,13 @@ class OcrEngine:
         file_path: Union[Path, str],
         dpi: Optional[int] = None,
         psm: Optional[int] = None,
+        lang: Optional[str] = None,
     ) -> OCRResult:
         """
         Public pipeline entry point for OCR processing.
         Determines file format (IMAGE vs. PDF) and executes OCR.
         """
-        return cls.process_document(file_path, dpi=dpi, psm=psm)
+        return cls.process_document(file_path, dpi=dpi, psm=psm, lang=lang)
 
     # Internal helper aliases
     _ocr_image = process_image

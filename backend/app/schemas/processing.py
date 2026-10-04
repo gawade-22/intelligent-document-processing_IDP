@@ -117,13 +117,9 @@ def to_processing_result(res: PipelineProcessingResult) -> ProcessingResult:
         else {}
     )
 
-    for field_name in (
-        "vendor_name",
-        "invoice_number",
-        "invoice_date",
-        "total_amount",
-    ):
-        f_data = extracted_fields.get(field_name, {})
+    for field_name, f_data in extracted_fields.items():
+        if not isinstance(f_data, dict):
+            continue
         f_errs: List[str] = []
         if field_name in field_errors_map and field_errors_map[field_name]:
             err_val = field_errors_map[field_name]
@@ -132,9 +128,11 @@ def to_processing_result(res: PipelineProcessingResult) -> ProcessingResult:
             else:
                 f_errs.append(str(err_val))
 
+        val = f_data.get("original_value") if f_data.get("original_value") is not None else f_data.get("value")
+        norm = f_data.get("normalized_value")
         field_results[field_name] = ProcessingFieldResult(
-            original_value=f_data.get("original_value") or f_data.get("value"),
-            normalized_value=f_data.get("normalized_value"),
+            original_value=str(val) if val is not None else None,
+            normalized_value=str(norm) if norm is not None else None,
             confidence=f_data.get("confidence"),
             source=f_data.get("source"),
             validation_errors=f_errs,

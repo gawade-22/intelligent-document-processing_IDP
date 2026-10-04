@@ -121,3 +121,20 @@ class DocumentListResponse(BaseModel):
         default_factory=list,
         description="List of document response items",
     )
+
+
+class DocumentDeleteResponse(BaseModel):
+    document_id: int = Field(..., description="ID of deleted document")
+    file_name: Optional[str] = Field(default=None, description="Filename of deleted document")
+    message: str = Field(default="Document deleted successfully.")
+
+
+class BatchDeleteRequest(BaseModel):
+    document_ids: List[int] = Field(..., min_length=1, description="List of document IDs to delete")
+
+
+class BatchDeleteResponse(BaseModel):
+    deleted_ids: List[int] = Field(default_factory=list, description="IDs of successfully deleted documents")
+    failed_ids: List[int] = Field(default_factory=list, description="IDs of documents that could not be deleted")
+    message: str
+

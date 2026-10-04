@@ -15,6 +15,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isProcessingImmediately, setIsProcessingImmediately] = useState(true);
   const [extractionMethod, setExtractionMethod] = useState('rule_plus_llm');
+  const [documentType, setDocumentType] = useState('auto');
   const [isUploading, setIsUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -88,7 +89,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
       if (isProcessingImmediately && docId) {
         setSuccessMsg(`Document uploaded. Running AI processing pipeline (${extractionMethod}) for ID #${docId}...`);
         try {
-          await runAIExtraction(docId, extractionMethod);
+          await runAIExtraction(docId, extractionMethod, documentType !== 'auto' ? documentType : undefined);
           setSuccessMsg(`Document successfully uploaded and processed!`);
         } catch (procErr) {
           setSuccessMsg(`Uploaded successfully. Note: Automated pipeline encountered: ${procErr.message}`);
@@ -176,12 +177,40 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
             )}
           </div>
 
-          {/* Extraction Method Selector */}
+          {/* Document Type Selector */}
           <div className="upload-options" style={{ marginTop: '12px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary, #64748b)', display: 'block', marginBottom: '6px' }}>
+              Target Document Category:
+            </span>
+            <select
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+              className="settings-input"
+              style={{ width: '100%', padding: '7px 10px', fontSize: '13px', borderRadius: '6px', border: '1px solid #cbd5e1', marginBottom: '10px' }}
+            >
+              <option value="auto">✨ Auto-Detect Type</option>
+              <option value="invoice">📄 Invoice</option>
+              <option value="purchase_order">📑 Purchase Order</option>
+              <option value="receipt">🧾 Receipt</option>
+              <option value="bank_statement">🏦 Bank Statement</option>
+              <option value="resume">👤 Resume / CV</option>
+              <option value="certificate">🎓 Certificate</option>
+              <option value="contract">⚖️ Contract / Agreement</option>
+              <option value="delivery_challan">🚚 Delivery Challan</option>
+              <option value="medical_report">🩺 Medical Report</option>
+              <option value="insurance">🛡️ Insurance Document</option>
+              <option value="id_document">🪪 ID Document</option>
+              <option value="expense_report">💳 Expense Report</option>
+              <option value="application_form">📝 Application / Form</option>
+            </select>
+          </div>
+
+          {/* Extraction Method Selector */}
+          <div className="upload-options" style={{ marginTop: '4px' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary, #64748b)', display: 'block', marginBottom: '6px' }}>
               Extraction Method:
             </span>
-            <div className="extraction-method-radios-modal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '12px' }}>
+            <div className="extraction-method-radios-modal" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 8px', border: '1px solid var(--border-color, #e2e8f0)', borderRadius: '6px', cursor: 'pointer', background: extractionMethod === 'rule' ? 'var(--bg-active, #f1f5f9)' : 'transparent' }}>
                 <input
                   type="radio"
@@ -215,6 +244,12 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
                 <span>Rule + LLM (Default)</span>
               </label>
             </div>
+          </div>
+
+          {/* OCR Engine Engine Notification */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '12px', color: '#166534', marginBottom: '10px' }}>
+            <Cpu size={14} className="text-emerald-600" />
+            <span><strong>Tesseract OCR v5.5 Connected:</strong> Scanned PDFs & images will be preprocessed with OpenCV & OCR-extracted automatically.</span>
           </div>
 
           {/* Options */}

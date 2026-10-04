@@ -113,3 +113,22 @@ export async function processDocument(id) {
 export function getDocumentFileUrl(id) {
   return `${BASE_URL}/api/documents/${id}/file`;
 }
+
+/**
+ * Permanently delete a document (DELETE /api/documents/{id})
+ */
+export async function deleteDocument(id) {
+  return await apiClient(`/api/documents/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Permanently batch delete multiple documents (POST /api/documents/batch-delete)
+ */
+export async function batchDeleteDocuments(ids) {
+  return await apiClient('/api/documents/batch-delete', {
+    method: 'POST',
+    body: JSON.stringify({ document_ids: ids }),
+  });
+}

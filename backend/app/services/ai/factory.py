@@ -26,8 +26,11 @@ OPENAI_COMPATIBLE_ALIASES = {
 }
 
 
+_USE_ENV_DEFAULT = object()
+
+
 def get_ai_provider(
-    provider_type: Optional[str] = None,
+    provider_type: Any = _USE_ENV_DEFAULT,
     **kwargs: Any,
 ) -> AIExtractionProvider:
     """
@@ -48,7 +51,11 @@ def get_ai_provider(
     Returns:
         Configured instance of AIExtractionProvider / LLMProvider.
     """
-    chosen = provider_type if provider_type is not None else settings.AI_PROVIDER
+    if provider_type is _USE_ENV_DEFAULT:
+        chosen = settings.AI_PROVIDER
+    else:
+        chosen = provider_type
+
     if not chosen or not str(chosen).strip():
         return NoOpAIExtractionProvider()
 

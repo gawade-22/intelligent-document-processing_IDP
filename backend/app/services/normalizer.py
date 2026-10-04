@@ -20,42 +20,85 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import logging
 import re
 from typing import Any, Optional, Union
+import unicodedata
 
 from app.schemas.normalization import InvoiceNormalizationResult, NormalizedField
 
 logger = logging.getLogger(__name__)
 
-# Month name mapping for English textual dates
+# Multilingual Month name mapping supporting English, French, Spanish, German, Italian, Portuguese, and Dutch
 MONTH_NAME_MAP = {
-    "jan": 1,
-    "january": 1,
-    "feb": 2,
-    "february": 2,
-    "mar": 3,
-    "march": 3,
-    "apr": 4,
-    "april": 4,
-    "may": 5,
-    "jun": 6,
-    "june": 6,
-    "jul": 7,
-    "july": 7,
-    "aug": 8,
-    "august": 8,
-    "sep": 9,
-    "sept": 9,
-    "september": 9,
-    "oct": 10,
-    "october": 10,
-    "nov": 11,
-    "november": 11,
-    "dec": 12,
-    "december": 12,
+    # 1. January
+    "jan": 1, "january": 1, "janv": 1, "janvier": 1, "enero": 1, "ene": 1,
+    "januar": 1, "januari": 1, "gennaio": 1, "gen": 1, "janeiro": 1, "janr": 1,
+    "janv.": 1, "ene.": 1, "gen.": 1, "jan.": 1, "jän": 1, "janner": 1, "jänner": 1,
+
+    # 2. February
+    "feb": 2, "february": 2, "fev": 2, "fevr": 2, "fevrier": 2, "févr": 2, "février": 2, "fév": 2,
+    "febrero": 2, "februar": 2, "februari": 2, "febbraio": 2, "febb": 2, "fevereiro": 2,
+    "feb.": 2, "fevr.": 2, "févr.": 2, "fev.": 2, "fév.": 2,
+
+    # 3. March
+    "mar": 3, "march": 3, "mars": 3, "marzo": 3, "märz": 3, "maerz": 3, "marz": 3, "mrz": 3,
+    "maart": 3, "mrt": 3, "marco": 3, "março": 3, "mar.": 3, "mrt.": 3,
+
+    # 4. April
+    "apr": 4, "april": 4, "avr": 4, "avril": 4, "abril": 4, "abr": 4, "aprile": 4,
+    "apr.": 4, "avr.": 4, "abr.": 4,
+
+    # 5. May
+    "may": 5, "mai": 5, "mayo": 5, "maggio": 5, "mag": 5, "maio": 5, "mei": 5, "mag.": 5,
+
+    # 6. June
+    "jun": 6, "june": 6, "juin": 6, "junio": 6, "juni": 6, "giugno": 6, "giu": 6, "junho": 6,
+    "jun.": 6, "giu.": 6,
+
+    # 7. July
+    "jul": 7, "july": 7, "juil": 7, "juill": 7, "juillet": 7, "julio": 7, "juli": 7,
+    "luglio": 7, "lug": 7, "julho": 7, "jul.": 7, "juil.": 7, "lug.": 7,
+
+    # 8. August
+    "aug": 8, "august": 8, "aout": 8, "août": 8, "agosto": 8, "ago": 8, "augustus": 8,
+    "aug.": 8, "ago.": 8,
+
+    # 9. September
+    "sep": 9, "sept": 9, "september": 9, "septembre": 9, "septiembre": 9, "setiembre": 9,
+    "settembre": 9, "set": 9, "setembro": 9, "sep.": 9, "sept.": 9, "set.": 9,
+
+    # 10. October
+    "oct": 10, "october": 10, "octobre": 10, "octubre": 10, "oktober": 10, "okt": 10,
+    "ottobre": 10, "ott": 10, "outubro": 10, "out": 10, "oct.": 10, "okt.": 10, "ott.": 10,
+
+    # 11. November
+    "nov": 11, "november": 11, "novembre": 11, "noviembre": 11, "novembro": 11, "nov.": 11,
+
+    # 12. December
+    "dec": 12, "december": 12, "decembre": 12, "décembre": 12, "déc": 12, "dec": 12,
+    "diciembre": 12, "dic": 12, "dezember": 12, "dez": 12, "dicembre": 12, "dezembro": 12,
+    "dec.": 12, "déc.": 12, "dic.": 12, "dez.": 12,
 }
+
+
+def _clean_month_token(token: str) -> str:
+    """Normalize a month string: lowercase, strip, remove period, and normalize unicode accents."""
+    t = token.lower().strip().rstrip(".")
+    normalized = unicodedata.normalize("NFKD", t)
+    unaccented = "".join(c for c in normalized if not unicodedata.combining(c))
+    return unaccented
+
 
 # Regex patterns for date extraction & cleaning
 DATE_LABEL_PREFIX = re.compile(
     r"^(?:invoice\s*date|inv\s*date|bill\s*date|date)\s*[:\-]?\s*",
+    re.IGNORECASE,
+)
+DAY_OF_WEEK_PREFIX = re.compile(
+    r"^(?:(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+    r"mon|tue|wed|thu|fri|sat|sun|"
+    r"lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|"
+    r"lun|mar|mer|jeu|ven|sam|dim|"
+    r"lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|"
+    r"montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b[\s,-]*)",
     re.IGNORECASE,
 )
 TRAILING_TIMESTAMP = re.compile(
@@ -65,14 +108,16 @@ TRAILING_TIMESTAMP = re.compile(
 # 1. ISO: YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
 ISO_DATE_PATTERN = re.compile(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$")
 
-# 2. Textual month with day first: 5 September 2026, 05-Sep-2026, 5th Sep 2026, 05.Sep.2026
+# 2. Textual month with day first: 5 September 2026, 05-Sep-2026, 27 SEPTEMBRE 2018, 5th Sep 2026
 DAY_TEXT_MONTH_PATTERN = re.compile(
-    r"^(\d{1,2})(?:st|nd|rd|th)?[-/.\s]+([a-zA-Z]+)[,-/.\s]+(\d{4}|\d{2})$"
+    r"^(\d{1,2})(?:st|nd|rd|th)?(?:[-/.\s]+(?:\b(?:de|of)\b|d'))?\s*([^\W\d_]+)\.?(?:[-/.\s]+(?:\b(?:de|of)\b))?\s*(\d{4}|\d{2})$",
+    re.IGNORECASE | re.UNICODE,
 )
 
-# 3. Textual month with month first: September 5, 2026, Sep 5, 2026, September 05 2026
+# 3. Textual month with month first: September 5, 2026, Sep 5, 2026, Septembre 27 2018
 MONTH_TEXT_DAY_PATTERN = re.compile(
-    r"^([a-zA-Z]+)[-/.\s]+(\d{1,2})(?:st|nd|rd|th)?(?:,)?[-/.\s]+(\d{4}|\d{2})$"
+    r"^([^\W\d_]+)\.?[-/.\s]+(\d{1,2})(?:st|nd|rd|th)?(?:,)?(?:[-/.\s]+(?:\b(?:de|of)\b))?\s*(\d{4}|\d{2})$",
+    re.IGNORECASE | re.UNICODE,
 )
 
 # 4. Strict Day-first numeric: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, D/M/YYYY
@@ -138,6 +183,8 @@ class InvoiceNormalizer:
 
         # Remove common label prefix if present, e.g., "Invoice Date: 05/09/2026"
         cleaned = DATE_LABEL_PREFIX.sub("", trimmed).strip()
+        # Remove day of week prefix if present, e.g., "JEU 27 SEPTEMBRE 2018"
+        cleaned = DAY_OF_WEEK_PREFIX.sub("", cleaned).strip()
         # Remove trailing timestamp if present, e.g., "05/09/2026 14:30:00"
         cleaned = TRAILING_TIMESTAMP.sub("", cleaned).strip()
 
@@ -160,34 +207,44 @@ class InvoiceNormalizer:
             month = int(iso_match.group(2))
             day = int(iso_match.group(3))
 
-        # Pattern 2: Day-first text month (e.g. 5 September 2026, 05-Sep-2026, 5th Sep 2026)
+        # Pattern 2: Day-first text month (e.g. 5 September 2026, 05-Sep-2026, 27 SEPTEMBRE 2018)
         if year is None:
             day_text_match = DAY_TEXT_MONTH_PATTERN.match(cleaned)
             if day_text_match:
                 day_val = int(day_text_match.group(1))
-                month_name = day_text_match.group(2).lower()
+                raw_month_token = day_text_match.group(2)
+                month_clean = _clean_month_token(raw_month_token)
                 year_val = int(day_text_match.group(3))
-                if month_name in MONTH_NAME_MAP:
+                month_num = (
+                    MONTH_NAME_MAP.get(month_clean)
+                    or MONTH_NAME_MAP.get(raw_month_token.lower())
+                )
+                if month_num is not None:
                     day = day_val
-                    month = MONTH_NAME_MAP[month_name]
+                    month = month_num
                     year = year_val + 2000 if year_val < 100 else year_val
                 else:
                     return NormalizedField(
                         original_value=date_str,
                         normalized_value=None,
                         success=False,
-                        error=f"Unrecognized month name: '{day_text_match.group(2)}'",
+                        error=f"Unrecognized month name: '{raw_month_token}'",
                     )
 
-        # Pattern 3: Month-first text month (e.g. September 5, 2026, Sep 5 2026)
+        # Pattern 3: Month-first text month (e.g. September 5, 2026, Sep 5 2026, Septembre 27 2018)
         if year is None:
             month_text_match = MONTH_TEXT_DAY_PATTERN.match(cleaned)
             if month_text_match:
-                month_name = month_text_match.group(1).lower()
+                raw_month_token = month_text_match.group(1)
+                month_clean = _clean_month_token(raw_month_token)
                 day_val = int(month_text_match.group(2))
                 year_val = int(month_text_match.group(3))
-                if month_name in MONTH_NAME_MAP:
-                    month = MONTH_NAME_MAP[month_name]
+                month_num = (
+                    MONTH_NAME_MAP.get(month_clean)
+                    or MONTH_NAME_MAP.get(raw_month_token.lower())
+                )
+                if month_num is not None:
+                    month = month_num
                     day = day_val
                     year = year_val + 2000 if year_val < 100 else year_val
                 else:
@@ -195,7 +252,7 @@ class InvoiceNormalizer:
                         original_value=date_str,
                         normalized_value=None,
                         success=False,
-                        error=f"Unrecognized month name: '{month_text_match.group(1)}'",
+                        error=f"Unrecognized month name: '{raw_month_token}'",
                     )
 
         # Pattern 4: Strict Day-first numeric format (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY)
@@ -206,6 +263,17 @@ class InvoiceNormalizer:
                 month = int(day_first_match.group(2))
                 year_val = int(day_first_match.group(3))
                 year = year_val + 2000 if year_val < 100 else year_val
+
+        # Fallback parsing with dateutil for other international formats
+        if year is None or month is None or day is None:
+            try:
+                import dateutil.parser
+                dt = dateutil.parser.parse(cleaned, dayfirst=True, fuzzy=False)
+                year = dt.year
+                month = dt.month
+                day = dt.day
+            except Exception:
+                pass
 
         # If no pattern matched, fail safely
         if year is None or month is None or day is None:

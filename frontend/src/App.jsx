@@ -24,6 +24,7 @@ import AuditLogView from './components/AuditLogView';
 import UploadView from './components/UploadView';
 import DocumentDetailsView from './components/ai/DocumentDetailsView';
 import AISettings from './pages/AISettings';
+import ExtractionAnalyticsPanel from './components/ExtractionAnalyticsPanel';
 import {
   getDashboardStats,
 } from './api/dashboard';
@@ -33,6 +34,8 @@ import {
   getReviewDocuments,
   verifyDocument,
   processDocument,
+  deleteDocument,
+  batchDeleteDocuments,
 } from './api/documents';
 import './App.css';
 
@@ -228,6 +231,42 @@ export default function App() {
     showToast(`Batch processed ${successful}/${ids.length} documents successfully.`, 'success');
     loadStats();
     loadDocuments();
+  };
+
+  // Single document deletion
+  const handleDeleteDocument = async (doc) => {
+    const docId = doc?.id || doc?.document_id;
+    const docName = doc?.file_name || `document #${docId}`;
+    if (!window.confirm(`Are you sure you want to permanently delete "${docName}"?\n\nThis will remove the file and all associated extraction records.`)) {
+      return;
+    }
+    try {
+      showToast(`Deleting "${docName}"...`, 'info');
+      await deleteDocument(docId);
+      showToast(`Document "${docName}" deleted successfully!`, 'success');
+      loadStats();
+      loadDocuments();
+    } catch (err) {
+      showToast(err.message || `Failed to delete document #${docId}`, 'error');
+    }
+  };
+
+  // Batch document deletion
+  const handleBatchDelete = async (ids, onComplete) => {
+    if (!ids || ids.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${ids.length} selected document(s)?\n\nThis will permanently remove the files and their extraction records.`)) {
+      return;
+    }
+    try {
+      showToast(`Deleting ${ids.length} document(s)...`, 'info');
+      const res = await batchDeleteDocuments(ids);
+      showToast(res.message || `Deleted ${ids.length} document(s) successfully!`, 'success');
+      if (onComplete) onComplete();
+      loadStats();
+      loadDocuments();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete selected documents', 'error');
+    }
   };
 
   // Open Document Viewer / Details
@@ -548,6 +587,11 @@ export default function App() {
                   {/* Statistics Cards Grid with loading skeleton state (never fake numbers) */}
                   <StatsCards stats={stats} isLoading={isLoadingStats} />
 
+                  {/* Extraction Record Analytics Panel */}
+                  {activeTab === 'dashboard' && (
+                    <ExtractionAnalyticsPanel stats={stats} isLoading={isLoadingStats} />
+                  )}
+
                   {/* Document Management Section Header */}
                   <div className="section-header-row">
                     <div className="section-title-group">
@@ -604,6 +648,8 @@ export default function App() {
                     onViewDetails={(id) => navigate(`/documents/${id}`)}
                     onReviewDocument={() => navigate('/review')}
                     onViewDocument={(doc) => navigate(`/documents/${doc.id || doc.document_id}`)}
+                    onDeleteDocument={handleDeleteDocument}
+                    onBatchDelete={handleBatchDelete}
                     isLoading={isLoading}
                     statusCounts={statusCounts}
                   />

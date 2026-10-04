@@ -407,7 +407,7 @@ def extract_document_with_ai(
         pipeline_result = pipeline.process_document(
             document_id=document_id,
             db=db,
-            ai_provider_override=provider_override,
+            ai_provider=provider_override,
         )
         return to_processing_result(pipeline_result)
     except DocumentNotFoundError:

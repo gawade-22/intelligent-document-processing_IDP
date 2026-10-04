@@ -28,3 +28,10 @@ backend/uploads/*
 Thumbs.db
 .vscode/
 .idea/
+
+# Frontend dependencies and builds
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+*.local

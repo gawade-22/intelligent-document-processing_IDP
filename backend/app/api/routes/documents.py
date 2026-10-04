@@ -30,8 +30,16 @@ from app.schemas.dashboard import (
     DashboardDocumentItem,
     DashboardDocumentListResponse,
     DashboardStatsResponse,
+    ExtractionRecordAnalytics,
+    FieldMetricItem,
 )
-from app.schemas.document import DocumentStatus, DocumentUploadResponse
+from app.schemas.document import (
+    BatchDeleteRequest,
+    BatchDeleteResponse,
+    DocumentDeleteResponse,
+    DocumentStatus,
+    DocumentUploadResponse,
+)
 from app.schemas.processing import ProcessingResult, to_processing_result
 from app.schemas.review import (
     DocumentViewerInfo,
@@ -303,20 +311,58 @@ def list_dashboard_documents(
 
         v_name = (
             fields_dict.get("vendor_name")
+            or fields_dict.get("supplier_name")
+            or fields_dict.get("buyer_name")
+            or fields_dict.get("store_name")
+            or fields_dict.get("account_holder")
+            or fields_dict.get("candidate_name")
+            or fields_dict.get("person_name")
+            or fields_dict.get("patient_name")
+            or fields_dict.get("policy_holder")
+            or fields_dict.get("employee_name")
+            or fields_dict.get("applicant_name")
+            or fields_dict.get("parties")
+            or fields_dict.get("institution_name")
             or fields_dict.get("vendor")
-            or fields_dict.get("company_name")
         )
         inv_num = (
             fields_dict.get("invoice_number")
-            or fields_dict.get("invoice_id")
-            or fields_dict.get("invoice_no")
+            or fields_dict.get("po_number")
+            or fields_dict.get("receipt_number")
+            or fields_dict.get("account_number")
+            or fields_dict.get("certificate_id")
+            or fields_dict.get("challan_number")
+            or fields_dict.get("policy_number")
+            or fields_dict.get("id_number")
+            or fields_dict.get("application_number")
+            or fields_dict.get("test_name")
+            or fields_dict.get("roll_number")
         )
         tot_amt = (
             fields_dict.get("total_amount")
+            or fields_dict.get("balance_amount")
+            or fields_dict.get("subtotal_amount")
+            or fields_dict.get("contract_value")
+            or fields_dict.get("premium_amount")
+            or fields_dict.get("expense_amount")
+            or fields_dict.get("test_result")
             or fields_dict.get("amount")
-            or fields_dict.get("total")
         )
-        inv_date = fields_dict.get("invoice_date") or fields_dict.get("date")
+        inv_date = (
+            fields_dict.get("invoice_date")
+            or fields_dict.get("order_date")
+            or fields_dict.get("receipt_date")
+            or fields_dict.get("transaction_date")
+            or fields_dict.get("issue_date")
+            or fields_dict.get("agreement_date")
+            or fields_dict.get("effective_date")
+            or fields_dict.get("challan_date")
+            or fields_dict.get("report_date")
+            or fields_dict.get("start_date")
+            or fields_dict.get("date_of_birth")
+            or fields_dict.get("expense_date")
+            or fields_dict.get("date")
+        )
 
         items.append(
             DashboardDocumentItem(
@@ -385,12 +431,18 @@ def list_documents_for_review(
             else doc.uploaded_at
         )
 
+        doc_type = record.document_type if record else None
+        from app.services.document_classifier import document_classifier
+        doc_type_label = document_classifier.get_display_name(doc_type) if doc_type else None
+
         items.append(
             ReviewDocumentSummary(
                 document_id=doc.id,
                 file_name=doc.file_name,
                 file_type=doc.file_type,
                 status=doc.status,
+                document_type=doc_type,
+                document_type_label=doc_type_label,
                 uploaded_at=doc.uploaded_at,
                 updated_at=updated_at,
                 fields=fields,
@@ -554,6 +606,95 @@ def get_dashboard_stats(
         else 0.0
     )
 
+    # -------------------------------------------------------------------------
+    # Extraction Record Analytics Aggregation
+    # -------------------------------------------------------------------------
+    records = db.query(DocumentRecord).all()
+    total_recs = len(records)
+
+    target_fields = [
+        ("vendor_name", "Vendor Name"),
+        ("invoice_number", "Invoice Number"),
+        ("invoice_date", "Invoice Date"),
+        ("total_amount", "Total Amount"),
+    ]
+
+    field_counts = {
+        fn: {"detected": 0, "confs": [], "sources": {}} for fn, _ in target_fields
+    }
+    sources_dist: Dict[str, int] = {}
+    tier_counts = {"high": 0, "medium": 0, "low": 0}
+    all_confs: List[float] = []
+
+    for rec in records:
+        c_score = rec.confidence_score
+        if c_score is not None:
+            all_confs.append(float(c_score))
+            if c_score >= 0.85:
+                tier_counts["high"] += 1
+            elif c_score >= 0.70:
+                tier_counts["medium"] += 1
+            else:
+                tier_counts["low"] += 1
+
+        ed = rec.extracted_data or {}
+        tsrc = ed.get("text_source", "unknown")
+        sources_dist[tsrc] = sources_dist.get(tsrc, 0) + 1
+
+        fields_obj = ed.get("fields", {})
+        for fn, _ in target_fields:
+            if fn in fields_obj:
+                f_data = fields_obj[fn]
+                val = f_data.get("value")
+                conf = f_data.get("confidence", 0.0)
+                src = f_data.get("source", "unknown")
+                if val is not None and str(val).strip():
+                    field_counts[fn]["detected"] += 1
+                    field_counts[fn]["confs"].append(float(conf))
+                    field_counts[fn]["sources"][src] = (
+                        field_counts[fn]["sources"].get(src, 0) + 1
+                    )
+
+    fields_breakdown = []
+    for fn, label in target_fields:
+        f_info = field_counts[fn]
+        det = f_info["detected"]
+        rate = round((det / total_recs) * 100.0, 1) if total_recs > 0 else 0.0
+        avg_f_conf = (
+            round(sum(f_info["confs"]) / len(f_info["confs"]), 3)
+            if f_info["confs"]
+            else 0.0
+        )
+        fields_breakdown.append(
+            FieldMetricItem(
+                field_name=fn,
+                label=label,
+                detected_count=det,
+                total_evaluated=total_recs,
+                detection_rate=rate,
+                average_confidence=avg_f_conf,
+                sources=f_info["sources"],
+            )
+        )
+
+    mean_rec_conf = (
+        round(sum(all_confs) / len(all_confs), 3) if all_confs else 0.0
+    )
+    auto_rate = (
+        round((total_verified / total_recs) * 100.0, 1) if total_recs > 0 else 0.0
+    )
+
+    extraction_analytics = ExtractionRecordAnalytics(
+        total_records=total_recs,
+        automation_rate=auto_rate,
+        average_confidence=mean_rec_conf,
+        high_confidence_count=tier_counts["high"],
+        review_required_count=tier_counts["low"] + tier_counts["medium"],
+        fields_breakdown=fields_breakdown,
+        text_sources=sources_dist,
+        confidence_tiers=tier_counts,
+    )
+
     return DashboardStatsResponse(
         total_processed=total_processed,
         total_verified=total_verified,
@@ -569,6 +710,68 @@ def get_dashboard_stats(
         by_status=by_status,
         by_document_type=by_doc_type,
         accuracy_rate=accuracy,
+        extraction_analytics=extraction_analytics,
+    )
+
+
+@router.get(
+    "/analytics/extraction",
+    response_model=ExtractionRecordAnalytics,
+    summary="Get files extraction record analytics",
+    description="Returns detailed extraction record analytics, field detection rates, confidence tiers, and source channels.",
+)
+def get_extraction_record_analytics(
+    db: Session = Depends(get_db),
+) -> ExtractionRecordAnalytics:
+    stats = get_dashboard_stats(db)
+    return stats.extraction_analytics or ExtractionRecordAnalytics()
+
+
+@router.post(
+    "/batch-delete",
+    response_model=BatchDeleteResponse,
+    summary="Batch delete multiple documents",
+    description="Permanently deletes multiple documents, their records, audit logs, and disk files.",
+)
+def batch_delete_documents_endpoint(
+    request: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+) -> BatchDeleteResponse:
+    """Batch deletes multiple documents with transactional database and disk cleanup."""
+    deleted_ids = []
+    failed_ids = []
+    paths_to_clean = []
+
+    for doc_id in request.document_ids:
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            failed_ids.append(doc_id)
+            continue
+        try:
+            if doc.file_path:
+                paths_to_clean.append(doc.file_path)
+            db.delete(doc)
+            deleted_ids.append(doc_id)
+        except Exception as exc:
+            logger.error(f"Error preparing deletion for doc {doc_id}: {exc}")
+            failed_ids.append(doc_id)
+
+    try:
+        db.commit()
+        for fpath in paths_to_clean:
+            upload_service.cleanup_file(fpath)
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Failed to commit batch delete: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Batch deletion failed during database transaction.",
+        )
+
+    return BatchDeleteResponse(
+        deleted_ids=deleted_ids,
+        failed_ids=failed_ids,
+        message=f"Successfully deleted {len(deleted_ids)} document(s).",
     )
 
 
@@ -603,11 +806,17 @@ def get_document_review_detail(
     if doc.status == DocumentStatus.FAILED.value and doc.error_message:
         processing_errors.append(doc.error_message)
 
+    doc_type = record.document_type if record else None
+    from app.services.document_classifier import document_classifier
+    doc_type_label = document_classifier.get_display_name(doc_type) if doc_type else None
+
     return ReviewDocumentDetailResponse(
         document_id=doc.id,
         file_name=doc.file_name,
         file_type=doc.file_type,
         status=doc.status,
+        document_type=doc_type,
+        document_type_label=doc_type_label,
         document=DocumentViewerInfo(
             viewer_url=f"/api/documents/{doc.id}/file"
         ),
@@ -617,6 +826,49 @@ def get_document_review_detail(
         raw_text=record.raw_text if record else None,
         confidence_score=record.confidence_score if record else None,
     )
+
+
+@router.delete(
+    "/{id}",
+    response_model=DocumentDeleteResponse,
+    summary="Delete a document and its extraction records",
+    description="Permanently deletes the document, its records, and cleans up the stored file on disk.",
+)
+def delete_document_endpoint(
+    id: int,
+    db: Session = Depends(get_db),
+) -> DocumentDeleteResponse:
+    """Permanently deletes a single document and associated disk file."""
+    doc = db.query(Document).filter(Document.id == id).first()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document with ID {id} not found.",
+        )
+
+    file_path = doc.file_path
+    file_name = doc.file_name
+
+    try:
+        db.delete(doc)
+        db.commit()
+
+        if file_path:
+            upload_service.cleanup_file(file_path)
+
+        logger.info(f"Document {id} ({file_name}) successfully deleted.")
+        return DocumentDeleteResponse(
+            document_id=id,
+            file_name=file_name,
+            message=f"Document '{file_name}' deleted successfully.",
+        )
+    except Exception as exc:
+        db.rollback()
+        logger.error(f"Failed to delete document {id}: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete document from database.",
+        )
 
 
 @router.post(

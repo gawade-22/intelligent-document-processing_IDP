@@ -75,10 +75,13 @@ class Settings:
     )
 
     # OCR Engine settings (optional paths for OS binaries on Windows)
-    TESSERACT_CMD: Optional[str] = os.getenv("TESSERACT_CMD", None)
+    _raw_tesseract_cmd = os.getenv("TESSERACT_CMD")
+    TESSERACT_CMD: Optional[str] = _raw_tesseract_cmd.strip() if _raw_tesseract_cmd and _raw_tesseract_cmd.strip() else None
+    OCR_LANGUAGE: str = os.getenv("OCR_LANGUAGE", "eng").strip() or "eng"
+    OCR_PSM: int = _parse_int_env("OCR_PSM", _parse_int_env("OCR_PSM_MODE", 6))
+    OCR_PSM_MODE: int = OCR_PSM
     POPPLER_PATH: Optional[str] = os.getenv("POPPLER_PATH", None)
     OCR_PDF_DPI: int = _parse_int_env("OCR_PDF_DPI", 300)
-    OCR_PSM_MODE: int = _parse_int_env("OCR_PSM_MODE", 6)
 
     # AI / LLM Extraction Configuration (Optional - leave empty for rule-based)
     AI_PROVIDER: Optional[str] = os.getenv("AI_PROVIDER", None)
@@ -108,10 +111,13 @@ class Settings:
             ],
         )
         self.MAX_FILE_SIZE_BYTES: int = _parse_int_env("MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024)
-        self.TESSERACT_CMD: Optional[str] = os.getenv("TESSERACT_CMD", None)
+        raw_tess = os.getenv("TESSERACT_CMD")
+        self.TESSERACT_CMD: Optional[str] = raw_tess.strip() if raw_tess and raw_tess.strip() else None
+        self.OCR_LANGUAGE: str = os.getenv("OCR_LANGUAGE", "eng").strip() or "eng"
+        self.OCR_PSM: int = _parse_int_env("OCR_PSM", _parse_int_env("OCR_PSM_MODE", 6))
+        self.OCR_PSM_MODE: int = self.OCR_PSM
         self.POPPLER_PATH: Optional[str] = os.getenv("POPPLER_PATH", None)
         self.OCR_PDF_DPI: int = _parse_int_env("OCR_PDF_DPI", 300)
-        self.OCR_PSM_MODE: int = _parse_int_env("OCR_PSM_MODE", 6)
         self.AI_PROVIDER: Optional[str] = os.getenv("AI_PROVIDER", None)
         self.AI_MODEL: Optional[str] = os.getenv("AI_MODEL", None)
         self.AI_API_KEY: Optional[str] = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY", None)

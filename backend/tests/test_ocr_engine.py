@@ -420,6 +420,62 @@ def test_perform_ocr_universal_entrypoint():
             os.remove(tmp_path)
 
 
+def test_tesseract_cmd_explicit_valid_path():
+    """Verify explicit valid path in TESSERACT_CMD is respected."""
+    with tempfile.NamedTemporaryFile(suffix=".exe" if os.name == "nt" else "", delete=False) as tmp:
+        fake_tesseract = tmp.name
+
+    try:
+        with patch("app.core.config.settings.TESSERACT_CMD", fake_tesseract):
+            resolved = OcrEngine.resolve_tesseract_cmd()
+            assert resolved == str(Path(fake_tesseract).resolve()) or resolved == fake_tesseract
+    finally:
+        if os.path.exists(fake_tesseract):
+            os.remove(fake_tesseract)
+
+
+def test_tesseract_cmd_empty_uses_system_path():
+    """Verify empty TESSERACT_CMD falls back to system PATH."""
+    with patch("app.core.config.settings.TESSERACT_CMD", None):
+        with patch("shutil.which", return_value="C:\\system_path\\tesseract.exe"):
+            resolved = OcrEngine.resolve_tesseract_cmd()
+            assert resolved == "C:\\system_path\\tesseract.exe"
+
+
+def test_tesseract_cmd_invalid_falls_back_to_system_path():
+    """Verify non-existent TESSERACT_CMD logs warning and falls back to system PATH."""
+    with patch("app.core.config.settings.TESSERACT_CMD", "C:\\non_existent_folder\\tesseract.exe"):
+        with patch("shutil.which", return_value="C:\\system_path\\tesseract.exe"):
+            resolved = OcrEngine.resolve_tesseract_cmd()
+            assert resolved == "C:\\system_path\\tesseract.exe"
+
+
+def test_real_tesseract_detection_and_ocr():
+    """Verify that installed Tesseract is detected and successfully OCRs a test image."""
+    is_avail = OcrEngine.is_tesseract_available()
+    assert is_avail is True, "Tesseract should be detected on the system."
+
+    # Create synthetic invoice text image scaled for OCR readability
+    img = Image.new("RGB", (600, 200), color=(255, 255, 255))
+    d = ImageDraw.Draw(img)
+    d.text((30, 50), "INVOICE 12345", fill=(0, 0, 0))
+    scaled_img = img.resize((1200, 400), Image.Resampling.NEAREST)
+
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        img_path = tmp.name
+        scaled_img.save(img_path)
+
+    try:
+        res = process_image(img_path)
+        assert res.success is True
+        assert res.status in ("OCR_COMPLETED", "OCR_PARTIAL")
+        assert res.total_words > 0
+        assert "INVOICE" in res.combined_text.upper()
+    finally:
+        if os.path.exists(img_path):
+            os.remove(img_path)
+
+
 if __name__ == "__main__":
     print("Running OCR Engine Unit Tests...")
     test_perform_ocr_universal_entrypoint()
@@ -446,4 +502,12 @@ if __name__ == "__main__":
     print("[PASS] test_process_scanned_pdf_multipage_workflow")
     test_process_scanned_pdf_page_level_error_isolation()
     print("[PASS] test_process_scanned_pdf_page_level_error_isolation")
+    test_tesseract_cmd_explicit_valid_path()
+    print("[PASS] test_tesseract_cmd_explicit_valid_path")
+    test_tesseract_cmd_empty_uses_system_path()
+    print("[PASS] test_tesseract_cmd_empty_uses_system_path")
+    test_tesseract_cmd_invalid_falls_back_to_system_path()
+    print("[PASS] test_tesseract_cmd_invalid_falls_back_to_system_path")
+    test_real_tesseract_detection_and_ocr()
+    print("[PASS] test_real_tesseract_detection_and_ocr")
     print("\nALL OCR ENGINE TESTS PASSED SUCCESSFULLY!")

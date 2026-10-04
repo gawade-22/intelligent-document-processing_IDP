@@ -26,7 +26,6 @@ from app.services.ai.vendor_prompts import (
     register_vendor_prompt,
     unregister_vendor_prompt,
 )
-from app.services.llm_extractor import LLMExtractor, get_llm_extractor
 
 __all__ = [
     "AIExtractionProvider",
@@ -36,8 +35,6 @@ __all__ = [
     "MockAIExtractionProvider",
     "OpenAICompatibleProvider",
     "get_ai_provider",
-    "LLMExtractor",
-    "get_llm_extractor",
     "AIExtractedFields",
     "AIExtractionResponse",
     "AIExtractionStatus",

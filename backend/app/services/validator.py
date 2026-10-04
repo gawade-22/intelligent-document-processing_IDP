@@ -80,6 +80,15 @@ class InvoiceValidator:
             except ValueError:
                 continue
 
+        # Also attempt normalization check for textual / international dates
+        try:
+            from app.services.normalizer import InvoiceNormalizer
+            norm = InvoiceNormalizer.normalize_date(trimmed)
+            if norm.success and norm.normalized_value:
+                return True, None
+        except Exception:
+            pass
+
         return False, f"Invoice Date is invalid: '{value}'"
 
     @classmethod

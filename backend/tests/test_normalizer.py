@@ -48,6 +48,12 @@ class TestInvoiceDateNormalization:
             ("Invoice Date: 05/09/2026", "2026-09-05"),
             ("Date: 05-09-2026", "2026-09-05"),
             ("05/09/2026 14:30:00", "2026-09-05"),
+            ("27 SEPTEMBRE 2018", "2018-09-27"),
+            ("JEU 27 SEPTEMBRE 2018", "2018-09-27"),
+            ("27 février 2018", "2018-02-27"),
+            ("15 août 2018", "2018-08-15"),
+            ("10 de octubre de 2023", "2023-10-10"),
+            ("12 Dezember 2021", "2021-12-12"),
         ],
     )
     def test_valid_date_formats(self, raw_date: str, expected_normalized: str):

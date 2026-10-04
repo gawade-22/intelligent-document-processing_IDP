@@ -20,6 +20,7 @@ export default function UploadView({ onUploadComplete, onViewDocument }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [autoProcess, setAutoProcess] = useState(true);
   const [extractionMethod, setExtractionMethod] = useState('rule_plus_llm');
+  const [documentType, setDocumentType] = useState('auto');
   const [isUploading, setIsUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [successResult, setSuccessResult] = useState(null);
@@ -95,7 +96,7 @@ export default function UploadView({ onUploadComplete, onViewDocument }) {
       let processResp = null;
       if (autoProcess && docId) {
         // 2. Trigger pipeline extraction immediately with chosen extraction method
-        processResp = await runAIExtraction(docId, extractionMethod);
+        processResp = await runAIExtraction(docId, extractionMethod, documentType !== 'auto' ? documentType : undefined);
       }
 
       setSuccessResult({
@@ -219,6 +220,32 @@ export default function UploadView({ onUploadComplete, onViewDocument }) {
               </div>
             </div>
           )}
+
+          {/* Document Type Selector */}
+          <div className="upload-options-card mt-3">
+            <span className="options-section-label">Target Document Category:</span>
+            <select
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+              className="settings-input"
+              style={{ width: '100%', padding: '8px 12px', fontSize: '13px', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '6px', background: '#fff' }}
+            >
+              <option value="auto">✨ Auto-Detect Type</option>
+              <option value="invoice">📄 Invoice</option>
+              <option value="purchase_order">📑 Purchase Order</option>
+              <option value="receipt">🧾 Receipt</option>
+              <option value="bank_statement">🏦 Bank Statement</option>
+              <option value="resume">👤 Resume / CV</option>
+              <option value="certificate">🎓 Certificate</option>
+              <option value="contract">⚖️ Contract / Agreement</option>
+              <option value="delivery_challan">🚚 Delivery Challan</option>
+              <option value="medical_report">🩺 Medical Report</option>
+              <option value="insurance">🛡️ Insurance Document</option>
+              <option value="id_document">🪪 ID Document</option>
+              <option value="expense_report">💳 Expense Report</option>
+              <option value="application_form">📝 Application / Form</option>
+            </select>
+          </div>
 
           {/* Extraction Method Selector */}
           <div className="upload-options-card mt-4">
