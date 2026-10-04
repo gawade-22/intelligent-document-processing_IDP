@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Menu,
   Sparkles,
+  FileCode,
 } from 'lucide-react';
 import IdpLogo from './IdpLogo';
 
@@ -64,6 +65,13 @@ export default function Sidebar({
       icon: Sparkles, // AI extraction
       badge: null,
       aliases: ['ai-settings', 'ai'],
+    },
+    {
+      id: 'schemas',
+      path: '/schemas',
+      label: 'Schemas',
+      icon: FileCode,
+      badge: null,
     },
   ];
 

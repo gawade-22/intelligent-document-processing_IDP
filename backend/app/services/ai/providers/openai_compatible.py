@@ -60,7 +60,7 @@ class OpenAICompatibleProvider(AIExtractionProvider):
         elif settings.AI_MODEL:
             self.model = settings.AI_MODEL
         elif provider_name == "gemini":
-            self.model = "gemini-1.5-flash"
+            self.model = "gemini-2.5-flash"
         else:
             self.model = "gpt-4o-mini"
         self.timeout = timeout if timeout is not None else settings.AI_TIMEOUT
@@ -264,6 +264,11 @@ class OpenAICompatibleProvider(AIExtractionProvider):
                 except Exception:
                     pass
 
+                if last_code == 429:
+                    if any(term in err_body.lower() for term in ("quota", "resource_exhausted", "exceeded your current quota", "generativelanguage.googleapis.com")):
+                        last_err = f"Gemini API quota exhausted (HTTP 429): {err_body[:200]}"
+                        logger.warning(f"Fast-failing LLM call: {last_err}")
+                        break
                 if last_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1.5
                     logger.warning(
@@ -383,3 +388,44 @@ class OpenAICompatibleProvider(AIExtractionProvider):
             "model": self.model,
             "provider": self.provider_name,
         }
+
+    def complete_json(
+        self,
+        messages: List[Dict[str, str]],
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.0,
+    ) -> Dict[str, Any]:
+        """
+        Executes an OpenAI-compatible completion returning structured JSON dict.
+        Supports Gemini, OpenAI, Groq, Ollama, etc.
+        """
+        if not self.api_key or not self.api_key.strip():
+            logger.warning(f"complete_json called but API key is not configured for {self.provider_name}.")
+            return {}
+
+        endpoint_url = f"{self.base_url}/chat/completions"
+        payload_messages = []
+        if system_instruction:
+            payload_messages.append({"role": "system", "content": system_instruction})
+        payload_messages.extend(messages)
+
+        payload = {
+            "model": self.model,
+            "messages": payload_messages,
+            "temperature": temperature,
+            "response_format": {"type": "json_object"},
+        }
+
+        raw_content, err_msg, status_code = self._execute_http_completion(endpoint_url, payload)
+        if err_msg or not raw_content:
+            logger.warning(f"complete_json error from {self.provider_name}: {err_msg}")
+            return {}
+
+        cleaned = self._clean_markdown_fences(raw_content)
+        try:
+            parsed = json.loads(cleaned)
+            return parsed if isinstance(parsed, dict) else {"data": parsed}
+        except Exception as exc:
+            logger.warning(f"Failed to parse complete_json output as JSON: {exc} | Raw: {raw_content[:200]}")
+            return {}
+

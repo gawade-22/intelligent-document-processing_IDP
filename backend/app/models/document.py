@@ -17,6 +17,7 @@ class Document(Base):
     file_type = Column(String(100), nullable=False)
     file_size = Column(Integer, nullable=False)
     status = Column(String(50), default="UPLOADED", nullable=False, index=True)
+    file_hash = Column(String(64), nullable=True, index=True)
     error_message = Column(Text, nullable=True)
     uploaded_at = Column(
         DateTime(timezone=True),
@@ -24,8 +25,9 @@ class Document(Base):
         nullable=False,
     )
 
-    # Relationships to records and audit logs
+    # Relationships to records, extraction runs, and audit logs
     records = relationship("DocumentRecord", back_populates="document", cascade="all, delete-orphan")
+    extraction_runs = relationship("ExtractionRun", back_populates="document", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="document", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:

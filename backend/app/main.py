@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import ai, documents
+from app.api.routes import ai, documents, v2_documents
 from app.core.config import settings
 from app.core.security import sanitize_log_text
 from app.database.connection import Base, check_db_connection, engine
@@ -26,7 +26,7 @@ app = FastAPI(
         "Backend API foundation for the Intelligent Document "
         "Processing system."
     ),
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -61,16 +61,21 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     )
 
 
-# 3. Register API routers
+# 3. Register API routers (v1 legacy & v2 universal)
 app.include_router(
     documents.router,
     prefix="/api/documents",
-    tags=["Documents"],
+    tags=["Documents (v1)"],
 )
 app.include_router(
     ai.router,
     prefix="/api/ai",
     tags=["AI"],
+)
+app.include_router(
+    v2_documents.router,
+    prefix="/api/v2/documents",
+    tags=["Documents (v2 Universal)"],
 )
 
 

@@ -25,6 +25,7 @@ import UploadView from './components/UploadView';
 import DocumentDetailsView from './components/ai/DocumentDetailsView';
 import AISettings from './pages/AISettings';
 import ExtractionAnalyticsPanel from './components/ExtractionAnalyticsPanel';
+import SchemaRegistryView from './components/SchemaRegistryView';
 import {
   getDashboardStats,
 } from './api/dashboard';
@@ -173,7 +174,7 @@ export default function App() {
     ) {
       setActiveTab('ai-settings');
       setDetailDocId(null);
-    } else if (['reports', 'audit', 'settings'].includes(rawPath)) {
+    } else if (['reports', 'audit', 'settings', 'schemas'].includes(rawPath)) {
       setActiveTab(rawPath);
       setDetailDocId(null);
     }
@@ -367,6 +368,11 @@ export default function App() {
           title: 'AI & LLM',
           subtitle: 'Configure AI-powered document extraction.',
         };
+      case 'schemas':
+        return {
+          title: 'Universal Schema Registry',
+          subtitle: 'Dynamic schema definitions, canonical key bindings, deterministic DSL validation rules, and mathematical insights.',
+        };
       default:
         return {
           title: 'Document Processing Dashboard',
@@ -491,6 +497,8 @@ export default function App() {
             />
           ) : activeTab === 'ai-settings' ? (
             <AISettings />
+          ) : activeTab === 'schemas' ? (
+            <SchemaRegistryView />
           ) : activeTab === 'reports' ? (
             <AnalyticsView stats={stats} />
           ) : activeTab === 'audit' ? (

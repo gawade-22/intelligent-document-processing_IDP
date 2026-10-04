@@ -6,6 +6,7 @@ Supports bidirectional compatibility between extract_invoice(text, context) and 
 
 from abc import ABC, abstractmethod
 import json
+import re
 from typing import Any, Dict, List, Optional, Union
 
 from app.services.ai.schemas import (
@@ -90,15 +91,23 @@ class AIExtractionProvider(ABC):
         """
         return self.extract_invoice(text=text, context=context)
 
-    def extract(self, text: str) -> Dict[str, Any]:
-        """
-        Backward compatibility method for legacy callers expecting a plain dictionary.
-        Delegates to extract_invoice and formats fields as a dict.
-        """
         response = self.extract_invoice(text=text, context=None)
         if response and response.fields:
             return response.fields.to_dict()
         return {}
+
+    def complete_json(
+        self,
+        messages: List[Dict[str, str]],
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.0,
+    ) -> Dict[str, Any]:
+        """
+        Generic completion returning structured JSON dict.
+        Subclasses override to invoke chat completion with response_format=json_object.
+        """
+        return {}
+
 
 
 # Alias representing the abstract LLM provider interface
@@ -284,3 +293,244 @@ class MockAIExtractionProvider(AIExtractionProvider):
         if resp and resp.fields:
             return resp.fields.to_dict()
         return {}
+
+    def complete_json(
+        self,
+        messages: List[Dict[str, str]],
+        system_instruction: Optional[str] = None,
+        temperature: float = 0.0,
+    ) -> Dict[str, Any]:
+        prompt_text = " ".join(m.get("content", "") for m in messages).lower()
+
+        # 1. Classification
+        if "classify" in prompt_text or "classification" in prompt_text:
+            # Isolate document excerpt and file name from schema prompt instructions
+            if "--- document first page excerpt ---" in prompt_text:
+                doc_part = prompt_text.split("--- document first page excerpt ---")[-1]
+                if "file name:" in prompt_text:
+                    doc_part += " " + prompt_text.split("file name:")[1].split("\n")[0]
+            elif "file name:" in prompt_text:
+                doc_part = prompt_text.split("file name:")[-1]
+            else:
+                doc_part = prompt_text
+
+            if any(k in doc_part for k in ("soil", "drone", "agriculture", "survey", "crop", "farm")):
+                return {
+                    "primary_type": "Agricultural Drone Soil Survey",
+                    "family": "agriculture",
+                    "confidence": 0.96,
+                    "alternatives": [{"type": "Environmental Survey", "confidence": 0.82}],
+                }
+            if any(k in doc_part for k in ("resume", "curriculum vitae", "work experience", "skills", "candidate")):
+                return {
+                    "primary_type": "Resume / CV",
+                    "family": "employment",
+                    "confidence": 0.98,
+                    "alternatives": [{"type": "Professional Profile", "confidence": 0.85}],
+                }
+            if any(k in doc_part for k in ("bank", "statement", "debit", "credit", "account", "balance")):
+                return {
+                    "primary_type": "Bank Statement",
+                    "family": "financial",
+                    "confidence": 0.96,
+                    "alternatives": [{"type": "Ledger Sheet", "confidence": 0.80}],
+                }
+            if any(k in doc_part for k in ("patient", "blood", "doctor", "hospital", "clinic", "diagnosis", "prescription", "clinical")):
+                return {
+                    "primary_type": "Medical Report",
+                    "family": "medical",
+                    "confidence": 0.95,
+                    "alternatives": [],
+                }
+            if any(k in doc_part for k in ("certificate", "certified", "credential", "award", "diploma", "degree")):
+                return {
+                    "primary_type": "Certificate",
+                    "family": "academic",
+                    "confidence": 0.96,
+                    "alternatives": [{"type": "Credential", "confidence": 0.85}],
+                }
+            if any(k in doc_part for k in ("mission", "spaceflight", "orbital", "payload", "mars")):
+                return {
+                    "primary_type": "Spaceflight Mission Log",
+                    "family": "general",
+                    "confidence": 0.94,
+                    "alternatives": [{"type": "Technical Report", "confidence": 0.80}],
+                }
+            if any(k in doc_part for k in ("invoice", "bill", "vendor", "tax amount", "due", "globex", "acme", "subtotal", "total amount")):
+                return {
+                    "primary_type": "Commercial Invoice",
+                    "family": "financial",
+                    "confidence": 0.95,
+                    "alternatives": [{"type": "Bill / Receipt", "confidence": 0.82}],
+                }
+            if "noise" in doc_part or "corrupted" in doc_part or not any(c.isalnum() for c in doc_part):
+                return {
+                    "primary_type": "Unknown Document",
+                    "family": "general",
+                    "confidence": 0.30,
+                    "alternatives": [],
+                }
+            return {
+                "primary_type": "Commercial Invoice",
+                "family": "financial",
+                "confidence": 0.90,
+                "alternatives": [],
+            }
+
+        # 2. Schema Discovery
+        if "schema" in prompt_text or "discovery" in prompt_text:
+            if "soil" in prompt_text or "drone" in prompt_text or "agriculture" in prompt_text:
+                return {
+                    "sections": ["Survey Area", "Soil Metrics", "Observations"],
+                    "fields": [
+                        {"key": "field_id", "label": "Field ID", "data_type": "id", "section": "Survey Area"},
+                        {"key": "survey_date", "label": "Survey Date", "data_type": "date", "section": "Survey Area"},
+                        {"key": "ph_level", "label": "Soil pH", "data_type": "number", "section": "Soil Metrics"},
+                        {"key": "moisture_pct", "label": "Moisture Percentage", "data_type": "percent", "section": "Soil Metrics"},
+                        {"key": "nitrogen_ppm", "label": "Nitrogen (PPM)", "data_type": "number", "section": "Soil Metrics"},
+                    ],
+                    "tables": [],
+                    "validation_rules": [
+                        {"rule": "in_range", "value": "ph_level", "min": 0, "max": 14}
+                    ],
+                    "insight_definitions": [],
+                }
+            if "spaceflight" in prompt_text or "mission" in prompt_text:
+                return {
+                    "sections": ["Mission Overview", "Orbital Telemetry", "Payload"],
+                    "fields": [
+                        {"key": "mission_name", "label": "Mission Name", "data_type": "string", "section": "Mission Overview"},
+                        {"key": "launch_date", "label": "Launch Date", "data_type": "date", "section": "Mission Overview"},
+                        {"key": "apogee_km", "label": "Apogee (km)", "data_type": "number", "section": "Orbital Telemetry"},
+                        {"key": "payload_mass_kg", "label": "Payload Mass", "data_type": "number", "section": "Payload"},
+                    ],
+                    "tables": [],
+                    "validation_rules": [
+                        {"rule": "in_range", "value": "apogee_km", "min": 100, "max": 50000}
+                    ],
+                    "insight_definitions": [],
+                }
+            return {
+                "sections": ["General Information", "Details", "Financials"],
+                "fields": [
+                    {"key": "title", "label": "Document Title", "data_type": "string", "section": "General Information"},
+                    {"key": "date", "label": "Document Date", "data_type": "date", "section": "General Information"},
+                    {"key": "total", "label": "Total Amount", "data_type": "money", "section": "Financials"},
+                ],
+                "tables": [
+                    {"key": "items", "title": "Line Items", "columns": ["description", "quantity", "amount"]}
+                ],
+                "validation_rules": [
+                    {"rule": "sum_equals", "target": "total", "terms": ["items.amount"]}
+                ],
+                "insight_definitions": [
+                    {"id": "sum_metric", "title": "Total Spend", "kind": "metric", "agg": "sum", "table": "items", "column": "amount"}
+                ],
+            }
+
+        # 3. Dynamic Sectioned Extraction
+        if "target fields to extract" in prompt_text or "extract the target fields" in prompt_text:
+            extracted_fields = {}
+            raw_content = messages[0].get("content", "")
+            if "Document Content:" in raw_content:
+                doc_content = raw_content.split("Document Content:", 1)[1]
+            else:
+                doc_content = raw_content
+
+            # Simple keyword quote extractor for lines in document content
+            for line in doc_content.splitlines():
+                if ":" in line:
+                    parts = line.split(":", 1)
+                    k_cand = parts[0].strip().lower().replace(" ", "_")
+                    v_cand = parts[1].strip()
+                    if v_cand and len(v_cand) < 100:
+                        extracted_fields[k_cand] = {"value": v_cand, "quote": v_cand, "page": 1}
+
+            # Predefined standard fields matched by regex patterns on document content
+            patterns = [
+                # Invoice
+                ("vendor_name", r"\b(?:Vendor|Billed By|Supplier):\s*([^\r\n]+)", 1),
+                ("invoice_number", r"\b(?:Invoice\s*(?:Number|#|No\.?)|Reference\s*(?:#|No\.?)):\s*([^\r\n]+)", 1),
+                ("invoice_date", r"\b(?:(?:Invoice\s*)?Date|Dated):\s*([^\r\n]+)", 1),
+                ("subtotal_amount", r"\bSubtotal:\s*([^\r\n]+)", 1),
+                ("tax_amount", r"\b(?:Tax(?:\s*Amount)?|VAT):\s*([^\r\n]+)", 1),
+                ("total_amount", r"\b(?:Total(?:\s*Due|\s*Amount)?|Grand\s*Total):\s*([^\r\n]+)", 1),
+                
+                # Resume
+                ("candidate_name", r"(?:Name|Candidate):\s*([^\r\n]+)", 1),
+                ("email", r"(?:Email|E-mail):\s*([^\r\n]+)", 1),
+                ("phone", r"(?:Phone|Tel|Mobile):\s*([^\r\n]+)", 1),
+                ("summary", r"Summary:\s*([^\r\n]+)", 1),
+                ("skills", r"Skills:\s*([^\r\n]+)", 1),
+                ("education", r"Education:\s*([^\r\n]+)", 1),
+                ("experience", r"Experience:\s*([^\r\n]+)", 1),
+                ("projects", r"Projects:\s*([^\r\n]+)", 1),
+
+                # Bank Statement
+                ("account_holder", r"Account\s*Holder:\s*([^\r\n]+)", 1),
+                ("account_number", r"Account(?:\s*Number|#)?:\s*([^\r\n]+)", 1),
+                ("statement_period", r"(?:Statement\s*)?Period:\s*([^\r\n]+)", 1),
+                ("opening_balance", r"Opening\s*Balance:\s*([^\r\n]+)", 1),
+                ("closing_balance", r"Closing\s*Balance:\s*([^\r\n]+)", 1),
+
+                # Medical Report
+                ("patient_name", r"Patient(?:\s*Name)?:\s*([^\r\n]+)", 1),
+                ("patient_age_gender", r"(?:Age\s*/\s*Gender|Age):\s*([^\r\n]+)", 1),
+                ("referring_doctor", r"(?:Referring\s*)?Doctor:\s*([^\r\n]+)", 1),
+                ("report_date", r"(?:Report\s*)?Date:\s*([^\r\n]+)", 1),
+                ("diagnosis", r"Diagnosis:\s*([^\r\n]+)", 1),
+
+                # Certificate
+                ("recipient_name", r"Recipient:\s*([^\r\n]+)", 1),
+                ("credential_title", r"Credential:\s*([^\r\n]+)", 1),
+                ("issuing_organization", r"(?:Issuing\s*Authority|Issuer|Organization):\s*([^\r\n]+)", 1),
+                ("issue_date", r"Issue\s*Date:\s*([^\r\n]+)", 1),
+                ("certificate_id", r"(?:Certificate\s*ID|Reg\s*ID):\s*([^\r\n]+)", 1),
+
+                # Novel / Drone Soil Survey
+                ("field_id", r"Field\s*(?:ID|#):\s*([^\r\n]+)", 1),
+                ("survey_date", r"Survey\s*Date:\s*([^\r\n]+)", 1),
+                ("ph_level", r"(?:Soil\s*)?pH:\s*([^\r\n]+)", 1),
+                ("moisture_pct", r"Moisture:\s*([^\r\n]+)", 1),
+                ("nitrogen_ppm", r"Nitrogen:\s*([^\r\n]+)", 1),
+
+                # Spaceflight
+                ("mission_name", r"Mission:\s*([^\r\n]+)", 1),
+                ("launch_date", r"Launch\s*Date:\s*([^\r\n]+)", 1),
+                ("apogee_km", r"Apogee:\s*([^\r\n]+)", 1),
+                ("payload_mass_kg", r"Payload(?:\s*Mass)?:\s*([^\r\n]+)", 1),
+            ]
+            for f_k, f_pat, grp in patterns:
+                m = re.search(f_pat, doc_content, re.IGNORECASE)
+                if m:
+                    extracted_fields[f_k] = {
+                        "value": m.group(grp).strip(),
+                        "quote": m.group(grp).strip(),
+                        "page": 1,
+                    }
+
+            return {"fields": extracted_fields}
+
+        # 4. Table Extraction
+        if "extract the table" in prompt_text or "table" in prompt_text:
+            if "transaction" in prompt_text:
+                return {
+                    "tables": {
+                        "transactions": [
+                            {"date": "2026-08-05", "description": "Client Wire Inflow", "debit": "", "credit": "5000.00", "balance": "15000.00"},
+                            {"date": "2026-08-12", "description": "Cloud Services Inc", "debit": "500.00", "credit": "", "balance": "14500.00"},
+                        ]
+                    }
+                }
+            if "item" in prompt_text or "line" in prompt_text:
+                return {
+                    "tables": {
+                        "items": [
+                            {"description": "Enterprise Platform License", "quantity": "1", "unit_price": "1000.00", "amount": "1000.00"},
+                            {"description": "Integration Support", "quantity": "1", "unit_price": "150.00", "amount": "150.00"},
+                        ]
+                    }
+                }
+
+        return {"status": "success"}
+

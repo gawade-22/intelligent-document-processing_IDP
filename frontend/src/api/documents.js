@@ -86,32 +86,36 @@ export async function verifyDocument(id, fields, reviewerId = 'reviewer', notes 
 }
 
 /**
- * Upload a document (PDF, Excel, CSV, Image) (POST /api/documents/upload)
+ * Upload a document to the Universal Ingestion Engine (POST /api/v2/documents/upload)
  */
 export async function uploadDocument(file) {
   const formData = new FormData();
   formData.append('file', file);
 
-  return await apiClient('/api/documents/upload', {
+  const res = await apiClient('/api/v2/documents/upload?run_async=true', {
     method: 'POST',
     body: formData,
   });
+  return {
+    id: res.document_id,
+    ...res,
+  };
 }
 
 /**
- * Trigger backend pipeline processing on an uploaded document (POST /api/documents/{id}/process)
+ * Trigger backend pipeline reprocessing on a document (POST /api/v2/documents/{id}/reprocess)
  */
 export async function processDocument(id) {
-  return await apiClient(`/api/documents/${id}/process`, {
+  return await apiClient(`/api/v2/documents/${id}/reprocess`, {
     method: 'POST',
   });
 }
 
 /**
- * Get direct file stream URL for viewing in browser or iframe
+ * Get direct file stream URL for viewing in browser or iframe (GET /api/v2/documents/{id}/file)
  */
 export function getDocumentFileUrl(id) {
-  return `${BASE_URL}/api/documents/${id}/file`;
+  return `${BASE_URL}/api/v2/documents/${id}/file`;
 }
 
 /**
