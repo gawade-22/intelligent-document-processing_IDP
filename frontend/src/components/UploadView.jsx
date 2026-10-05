@@ -265,17 +265,9 @@ export default function UploadView({ onUploadComplete, onViewDocument }) {
               Drag and drop your document here, or <span style={{ color: '#1a56db', textDecoration: 'underline' }}>browse</span>
             </p>
 
-            <p style={{ fontSize: '12.5px', color: '#64748b', margin: '0 0 16px 0' }}>
+            <p style={{ fontSize: '12.5px', color: '#64748b', margin: 0 }}>
               Supported formats: <strong>PDF, PNG, JPG, CSV, Excel</strong> (Up to 10 MB)
             </p>
-
-            {/* Format Pills */}
-            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <span className="file-format-pill">PDF</span>
-              <span className="file-format-pill">PNG / JPG</span>
-              <span className="file-format-pill">CSV</span>
-              <span className="file-format-pill">XLSX</span>
-            </div>
           </div>
         </div>
 
