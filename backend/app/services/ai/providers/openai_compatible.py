@@ -240,6 +240,17 @@ class OpenAICompatibleProvider(AIExtractionProvider):
             "User-Agent": "IDP-Document-Extractor/1.0",
         }
 
+        # Define high-RPM fallback candidates for Gemini
+        fallback_models = []
+        if self.provider_name == "gemini":
+            current_m = payload.get("model", self.model)
+            if "3.1-flash-lite" in current_m:
+                fallback_models = ["gemini-2.5-flash-lite", "gemini-3-flash-preview"]
+            elif "2.5-flash-lite" in current_m:
+                fallback_models = ["gemini-3.1-flash-lite", "gemini-3-flash-preview"]
+            else:
+                fallback_models = ["gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+
         last_err = ""
         last_code = None
         for attempt in range(max_retries):
@@ -265,10 +276,21 @@ class OpenAICompatibleProvider(AIExtractionProvider):
                     pass
 
                 if last_code == 429:
-                    if any(term in err_body.lower() for term in ("quota", "resource_exhausted", "exceeded your current quota", "generativelanguage.googleapis.com")):
+                    if attempt < max_retries - 1 and fallback_models:
+                        alt_model = fallback_models.pop(0)
+                        logger.warning(
+                            f"Model '{payload.get('model')}' reached rate limit (HTTP 429). "
+                            f"Instantly switching to high-limit fallback model '{alt_model}' (attempt {attempt + 1}/{max_retries})..."
+                        )
+                        payload["model"] = alt_model
+                        req_data = json.dumps(payload).encode("utf-8")
+                        time.sleep(1.0)
+                        continue
+                    elif any(term in err_body.lower() for term in ("quota", "resource_exhausted", "exceeded your current quota", "generativelanguage.googleapis.com")):
                         last_err = f"Gemini API quota exhausted (HTTP 429): {err_body[:200]}"
                         logger.warning(f"Fast-failing LLM call: {last_err}")
                         break
+
                 if last_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
                     wait_time = (2 ** attempt) * 1.5
                     logger.warning(

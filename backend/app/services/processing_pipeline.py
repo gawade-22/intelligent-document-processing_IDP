@@ -499,28 +499,28 @@ class DocumentProcessingPipeline:
                     final_fields_dict["vendor_name"]["value"] = v_val
                     final_fields_dict["vendor_name"]["normalized_value"] = v_val
                     if v_conf > 0:
-                        final_fields_dict["vendor_name"]["confidence"] = max(final_fields_dict["vendor_name"]["confidence"], v_conf)
+                        final_fields_dict["vendor_name"]["confidence"] = v_conf
                     final_fields_dict["vendor_name"]["source"] = v_src
                 if "invoice_number" in final_fields_dict and num_val:
                     final_fields_dict["invoice_number"]["original_value"] = num_val
                     final_fields_dict["invoice_number"]["value"] = num_val
                     final_fields_dict["invoice_number"]["normalized_value"] = num_val
                     if num_conf > 0:
-                        final_fields_dict["invoice_number"]["confidence"] = max(final_fields_dict["invoice_number"]["confidence"], num_conf)
+                        final_fields_dict["invoice_number"]["confidence"] = num_conf
                     final_fields_dict["invoice_number"]["source"] = num_src
                 if "invoice_date" in final_fields_dict and d_raw:
                     final_fields_dict["invoice_date"]["original_value"] = d_raw
                     final_fields_dict["invoice_date"]["value"] = d_raw
                     final_fields_dict["invoice_date"]["normalized_value"] = d_norm or d_raw
                     if d_conf > 0:
-                        final_fields_dict["invoice_date"]["confidence"] = max(final_fields_dict["invoice_date"]["confidence"], d_conf)
+                        final_fields_dict["invoice_date"]["confidence"] = d_conf
                     final_fields_dict["invoice_date"]["source"] = d_src
                 if "total_amount" in final_fields_dict and a_raw:
                     final_fields_dict["total_amount"]["original_value"] = a_raw
                     final_fields_dict["total_amount"]["value"] = a_raw
                     final_fields_dict["total_amount"]["normalized_value"] = a_norm or a_raw
                     if a_conf > 0:
-                        final_fields_dict["total_amount"]["confidence"] = max(final_fields_dict["total_amount"]["confidence"], a_conf)
+                        final_fields_dict["total_amount"]["confidence"] = a_conf
                     final_fields_dict["total_amount"]["source"] = a_src
 
             elif doc_type_classified == "receipt":

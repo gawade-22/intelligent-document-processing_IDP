@@ -27,7 +27,7 @@ from app.services.ai.providers.openai_compatible import OpenAICompatibleProvider
 logger = logging.getLogger(__name__)
 
 GEMINI_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-GEMINI_DEFAULT_MODEL = "gemini-2.5-flash"
+GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite"
 
 
 class GeminiProvider(OpenAICompatibleProvider):

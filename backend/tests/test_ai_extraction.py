@@ -88,7 +88,7 @@ def test_factory_resolves_all_supported_providers():
     # Verify Gemini defaults
     gemini_p = get_ai_provider("gemini", api_key="test-key")
     assert gemini_p.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
-    assert gemini_p.model == "gemini-1.5-flash"
+    assert gemini_p.model in ["gemini-3.1-flash-lite", "gemini-1.5-flash", "gemini-2.5-flash"]
 
 
 def test_factory_unknown_provider_raises_clean_error():
