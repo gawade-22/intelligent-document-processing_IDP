@@ -118,11 +118,40 @@ class DSLValidationEngine:
                 if terms_found:
                     diff = abs(target_val - term_sum)
                     passed = diff <= tolerance
-                    msg = (
-                        f"Sum check passed: total={target_val:.2f} matches sum={term_sum:.2f} (diff={diff:.2f})"
-                        if passed
-                        else f"Sum mismatch: target total={target_val:.2f} but terms sum={term_sum:.2f} (difference={diff:.2f}, tolerance={tolerance})"
-                    )
+
+                    if not passed:
+                        # Check if invoice has additional components (discounts, shipping, fees, etc.)
+                        adjusted_sum = term_sum
+                        for f_k, f_obj in fields_map.items():
+                            if f_obj.value is None:
+                                continue
+                            k_lower = f_k.lower()
+                            lbl_lower = (f_obj.label or "").lower()
+                            # Avoid double-counting terms already included in terms
+                            if any(t in f_k for t in terms):
+                                continue
+                            val_m = generic_normalizer.normalize_money(f_obj.value)
+                            if val_m is None or val_m == 0:
+                                continue
+                            if any(w in k_lower or w in lbl_lower for w in ("discount", "deduction", "rebate", "less")):
+                                adjusted_sum -= val_m
+                            elif any(w in k_lower or w in lbl_lower for w in ("shipping", "freight", "handling", "delivery", "postage", "fee", "charge")):
+                                adjusted_sum += val_m
+                            elif any(w in k_lower or w in lbl_lower for w in ("tax", "vat", "gst", "cess")):
+                                if not any("tax" in t for t in terms):
+                                    adjusted_sum += val_m
+
+                        adj_diff = abs(target_val - adjusted_sum)
+                        if adj_diff <= tolerance:
+                            passed = True
+                            term_sum = adjusted_sum
+                            diff = adj_diff
+                            msg = f"Sum check passed with invoice adjustments: total={target_val:.2f} matches net sum={term_sum:.2f} (diff={diff:.2f})"
+                        else:
+                            msg = f"Sum mismatch: target total={target_val:.2f} but terms sum={term_sum:.2f} (difference={diff:.2f}, tolerance={tolerance})"
+                    else:
+                        msg = f"Sum check passed: total={target_val:.2f} matches sum={term_sum:.2f} (diff={diff:.2f})"
+
                     results.append({
                         "rule": "sum_equals",
                         "target": target_key,

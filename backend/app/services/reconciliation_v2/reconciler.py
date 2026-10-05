@@ -89,9 +89,8 @@ class MultiPassReconciler:
 
             if matched_pattern:
                 passes.append(ExtractionPass(engine="pattern-detector", value=matched_pattern))
-            elif pattern_matches:
-                # Add closest or top pattern candidate
-                passes.append(ExtractionPass(engine="pattern-detector", value=pattern_matches[0]))
+        elif pattern_matches and llm_value is None:
+            passes.append(ExtractionPass(engine="pattern-detector", value=pattern_matches[0]))
 
         # 4. Evaluate Reconciliation Outcome
         # Base confidence from grounding

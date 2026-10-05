@@ -150,7 +150,9 @@ def generate_document_pdf_report(
 
     for f in fields:
         raw_val = f.get("value") or f.get("raw_value")
-        val_str = _sanitize_text(raw_val if raw_val is not None else "Not Detected", preserve_newlines=True)
+        if raw_val is None or str(raw_val).strip().lower() in ("null", "none", "not detected", ""):
+            continue
+        val_str = _sanitize_text(raw_val, preserve_newlines=True)
         section_str = _sanitize_text(f.get("section", "General"))[:16]
         label_str = _sanitize_text(f.get("label", f.get("key", "Field")))[:22]
         f_conf = f.get("confidence", 0.90)
