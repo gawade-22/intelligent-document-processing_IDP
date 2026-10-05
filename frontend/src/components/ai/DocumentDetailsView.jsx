@@ -22,7 +22,6 @@ export default function DocumentDetailsView({ docId: propDocId, onBack }) {
       docId={docId}
       isOpen={true}
       onClose={handleClose}
-      onDocumentUpdated={handleClose}
     />
   );
 }

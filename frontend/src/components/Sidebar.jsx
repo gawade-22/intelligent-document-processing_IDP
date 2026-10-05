@@ -5,14 +5,8 @@ import {
   FileText,
   CheckSquare,
   UploadCloud,
-  BarChart2,
-  Clock,
-  Settings,
   ChevronRight,
   ChevronLeft,
-  Menu,
-  Sparkles,
-  FileCode,
 } from 'lucide-react';
 import IdpLogo from './IdpLogo';
 
@@ -26,20 +20,20 @@ export default function Sidebar({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Primary Navigation: Dashboard, Documents, Review, Upload, AI / LLM
+  // Primary Navigation: Dashboard, Documents, Review, Upload
   const primaryNavItems = [
     {
       id: 'dashboard',
       path: '/dashboard',
       label: 'Dashboard',
-      icon: LayoutDashboard, // home/grid
+      icon: LayoutDashboard,
       badge: null,
     },
     {
       id: 'documents',
       path: '/documents',
       label: 'Documents',
-      icon: FileText, // document/list
+      icon: FileText,
       badge: null,
       aliases: ['invoices'],
     },
@@ -47,7 +41,7 @@ export default function Sidebar({
       id: 'review',
       path: '/review',
       label: 'Review',
-      icon: CheckSquare, // check/document
+      icon: CheckSquare,
       badge: needsReviewCount > 0 ? needsReviewCount : null,
       badgeColor: 'warning',
     },
@@ -55,45 +49,8 @@ export default function Sidebar({
       id: 'upload',
       path: '/upload',
       label: 'Upload',
-      icon: UploadCloud, // upload/cloud
+      icon: UploadCloud,
       badge: null,
-    },
-    {
-      id: 'ai-settings',
-      path: '/settings/ai',
-      label: 'AI / LLM',
-      icon: Sparkles, // AI extraction
-      badge: null,
-      aliases: ['ai-settings', 'ai'],
-    },
-    {
-      id: 'schemas',
-      path: '/schemas',
-      label: 'Schemas',
-      icon: FileCode,
-      badge: null,
-    },
-  ];
-
-  // Secondary Management Tools
-  const secondaryNavItems = [
-    {
-      id: 'reports',
-      path: '/reports',
-      label: 'Reports',
-      icon: BarChart2,
-    },
-    {
-      id: 'audit',
-      path: '/audit',
-      label: 'Audit Logs',
-      icon: Clock,
-    },
-    {
-      id: 'settings',
-      path: '/settings',
-      label: 'Settings',
-      icon: Settings,
     },
   ];
 
@@ -113,7 +70,6 @@ export default function Sidebar({
     if (location.pathname === item.path) return true;
     if (item.aliases && item.aliases.includes(currentSegment)) return true;
     if (item.id === 'dashboard' && (currentSegment === '' || currentSegment === 'dashboard')) return true;
-    if (item.id === 'ai-settings' && (location.pathname.startsWith('/settings/ai') || location.pathname.startsWith('/ai-settings'))) return true;
     return false;
   };
 
@@ -191,55 +147,7 @@ export default function Sidebar({
             );
           })}
         </ul>
-
-        {/* Secondary Management Links */}
-        {!collapsed ? (
-          <div className="nav-section-title mt-4">MANAGEMENT</div>
-        ) : (
-          <div className="nav-divider" title="Management Tools" />
-        )}
-
-        <ul className="nav-list">
-          {secondaryNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = isItemActive(item);
-            return (
-              <li key={item.id} className="nav-item">
-                <button
-                  type="button"
-                  id={`nav-${item.id}`}
-                  className={`nav-link ${active ? 'active' : ''}`}
-                  onClick={() => handleNavClick(item)}
-                  title={item.label}
-                  aria-label={item.label}
-                >
-                  <div className="nav-icon-wrapper">
-                    <Icon size={19} className="nav-icon" />
-                  </div>
-                  {!collapsed && <span className="nav-label">{item.label}</span>}
-                  {!collapsed && active && <ChevronRight size={14} className="active-arrow" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
       </nav>
-
-      {/* 3. User Profile Card at Bottom */}
-      <div className="sidebar-user">
-        <div className="user-card" title="Ayush (VALIDATOR)">
-          <div className="user-avatar">
-            <span>A</span>
-            <span className="online-indicator-dot" />
-          </div>
-          {!collapsed && (
-            <div className="user-info">
-              <span className="user-name">Ayush</span>
-              <span className="user-role">VALIDATOR</span>
-            </div>
-          )}
-        </div>
-      </div>
     </aside>
   );
 }

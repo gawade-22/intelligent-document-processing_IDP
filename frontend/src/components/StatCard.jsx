@@ -17,9 +17,19 @@ export default function StatCard({
   variant = 'blue', // 'blue' | 'green' | 'amber' | 'neutral'
   isLoading = false,
   className = '',
+  onClick,
+  title,
 }) {
   return (
-    <div className={`stat-card stat-card-${variant} ${className}`}>
+    <div
+      className={`stat-card stat-card-${variant} ${onClick ? 'stat-card-clickable' : ''} ${className}`}
+      onClick={onClick}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+      title={title}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
+    >
       <div className="stat-card-inner">
         {Icon && (
           <div className={`stat-card-icon-box icon-variant-${variant}`}>

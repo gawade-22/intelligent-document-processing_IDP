@@ -78,33 +78,33 @@ export default function EvidenceViewer({
       {/* Top Evidence & Zoom Toolbar */}
       <div className="uv-evidence-bar">
         <div className="flex items-center gap-3">
-          <span className="font-bold flex items-center gap-1.5 text-slate-200">
-            <FileText size={14} className="text-blue-400" />
+          <span className="font-bold flex items-center gap-1.5 text-slate-800 text-sm">
+            <FileText size={15} className="text-blue-600" />
             Source Document
           </span>
-          <span className="text-slate-400 text-xs font-mono uppercase bg-slate-800 px-2 py-0.5 rounded">
+          <span className="text-slate-600 text-xs font-mono uppercase bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-semibold">
             {fileType || 'PDF'}
           </span>
         </div>
 
         {/* Page Navigation & Zoom Controls */}
         <div className="uv-evidence-controls">
-          <div className="flex items-center gap-1 bg-slate-800/80 rounded-md p-0.5 border border-slate-700">
+          <div className="flex items-center gap-1 bg-white rounded-md p-0.5 border border-slate-200 shadow-xs">
             <button
               type="button"
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30"
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded disabled:opacity-30"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1}
               title="Previous Page"
             >
               <ChevronLeft size={14} />
             </button>
-            <span className="text-xs font-mono text-slate-300 px-1.5">
+            <span className="text-xs font-mono text-slate-700 font-semibold px-1.5">
               {currentPage} / {totalPages}
             </span>
             <button
               type="button"
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30"
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded disabled:opacity-30"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages}
               title="Next Page"
@@ -113,21 +113,21 @@ export default function EvidenceViewer({
             </button>
           </div>
 
-          <div className="flex items-center gap-1 bg-slate-800/80 rounded-md p-0.5 border border-slate-700">
+          <div className="flex items-center gap-1 bg-white rounded-md p-0.5 border border-slate-200 shadow-xs">
             <button
               type="button"
-              className="p-1 text-slate-300 hover:text-white"
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
               onClick={handleZoomOut}
               title="Zoom Out"
             >
               <ZoomOut size={14} />
             </button>
-            <span className="text-xs font-mono text-slate-300 px-1 cursor-pointer" onClick={handleResetZoom}>
+            <span className="text-xs font-mono text-slate-700 font-semibold px-1 cursor-pointer" onClick={handleResetZoom}>
               {Math.round(zoomLevel * 100)}%
             </span>
             <button
               type="button"
-              className="p-1 text-slate-300 hover:text-white"
+              className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded"
               onClick={handleZoomIn}
               title="Zoom In"
             >
@@ -207,8 +207,8 @@ export default function EvidenceViewer({
         <div className="uv-evidence-card-drawer">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-sm text-slate-100">{activeField.label}</span>
-              <span className="font-mono text-xs text-slate-400">({activeField.key})</span>
+              <span className="font-bold text-sm text-slate-900">{activeField.label}</span>
+              <span className="font-mono text-xs text-slate-500">({activeField.key})</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ export default function EvidenceViewer({
                 </span>
               )}
               {activeField.evidence?.page && (
-                <span className="text-xs text-slate-400 font-mono">
+                <span className="text-xs text-slate-500 font-mono">
                   Page {activeField.evidence.page}
                 </span>
               )}
@@ -234,7 +234,7 @@ export default function EvidenceViewer({
               "{activeField.evidence.quote}"
             </div>
           ) : (
-            <div className="text-xs text-slate-400 italic mt-2">
+            <div className="text-xs text-slate-500 italic mt-2">
               No verbatim quote recorded for this field.
             </div>
           )}

@@ -74,7 +74,12 @@ class Settings:
         10 * 1024 * 1024,
     )
 
-    # OCR Engine settings (optional paths for OS binaries on Windows)
+    # OCR Engine settings: "paddleocr" (default modern DL OCR) or "tesseract"
+    OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddleocr").lower().strip()
+    PADDLE_OCR_LANG: str = os.getenv("PADDLE_OCR_LANG", "en").strip() or "en"
+    PADDLE_OCR_USE_ANGLE_CLS: bool = os.getenv("PADDLE_OCR_USE_ANGLE_CLS", "true").lower() == "true"
+    PADDLE_OCR_USE_GPU: bool = os.getenv("PADDLE_OCR_USE_GPU", "false").lower() == "true"
+
     _raw_tesseract_cmd = os.getenv("TESSERACT_CMD")
     TESSERACT_CMD: Optional[str] = _raw_tesseract_cmd.strip() if _raw_tesseract_cmd and _raw_tesseract_cmd.strip() else None
     OCR_LANGUAGE: str = os.getenv("OCR_LANGUAGE", "eng").strip() or "eng"
@@ -111,6 +116,10 @@ class Settings:
             ],
         )
         self.MAX_FILE_SIZE_BYTES: int = _parse_int_env("MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024)
+        self.OCR_ENGINE: str = os.getenv("OCR_ENGINE", "paddleocr").lower().strip()
+        self.PADDLE_OCR_LANG: str = os.getenv("PADDLE_OCR_LANG", "en").strip() or "en"
+        self.PADDLE_OCR_USE_ANGLE_CLS: bool = os.getenv("PADDLE_OCR_USE_ANGLE_CLS", "true").lower() == "true"
+        self.PADDLE_OCR_USE_GPU: bool = os.getenv("PADDLE_OCR_USE_GPU", "false").lower() == "true"
         raw_tess = os.getenv("TESSERACT_CMD")
         self.TESSERACT_CMD: Optional[str] = raw_tess.strip() if raw_tess and raw_tess.strip() else None
         self.OCR_LANGUAGE: str = os.getenv("OCR_LANGUAGE", "eng").strip() or "eng"

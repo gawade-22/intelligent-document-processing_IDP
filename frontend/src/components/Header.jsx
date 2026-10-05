@@ -3,10 +3,6 @@ import {
   Menu,
   Home,
   ChevronRight,
-  Bell,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
 } from 'lucide-react';
 
 export default function Header({
@@ -28,12 +24,6 @@ export default function Header({
         return 'Review';
       case 'upload':
         return 'Upload';
-      case 'reports':
-        return 'Reports';
-      case 'audit':
-        return 'Audit Logs';
-      case 'settings':
-        return 'Settings';
       case 'document-detail':
         return 'Document Details';
       default:
@@ -88,45 +78,6 @@ export default function Header({
             <span className="breadcrumb-current">{getBreadcrumbTitle()}</span>
           )}
         </nav>
-      </div>
-
-      <div className="header-right">
-        {/* API Connectivity status pill */}
-        <div
-          className={`connectivity-pill ${
-            backendConnected ? 'connected' : 'disconnected'
-          }`}
-          title={
-            backendConnected
-              ? 'FastAPI Backend Online'
-              : 'Backend Disconnected'
-          }
-        >
-          <span className="status-dot" />
-          <span className="status-text">
-            {backendConnected ? 'API Connected' : 'API Offline'}
-          </span>
-        </div>
-
-        {/* Notifications */}
-        <button
-          type="button"
-          className="header-icon-btn"
-          aria-label="Notifications"
-          title="Notifications"
-        >
-          <Bell size={18} />
-          <span className="notification-dot" />
-        </button>
-
-        {/* User Pill Dropdown */}
-        <div className="header-user-dropdown">
-          <div className="header-user-avatar">
-            <span>A</span>
-          </div>
-          <span className="header-user-name">Ayush</span>
-          <ChevronDown size={14} className="header-user-caret" />
-        </div>
       </div>
     </header>
   );

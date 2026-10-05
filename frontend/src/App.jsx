@@ -2,30 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Filter,
-  Upload,
   RefreshCw,
   AlertCircle,
   CheckCircle2,
-  Sliders,
-  ShieldCheck,
-  Cpu,
   ArrowRight,
 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import StatsCards from './components/StatsCards';
 import DocumentTable from './components/DocumentTable';
-import UploadModal from './components/UploadModal';
 import DocumentViewerModal from './components/DocumentViewerModal';
 import FilterDrawer from './components/FilterDrawer';
 import ReviewQueueView from './components/ReviewQueueView';
-import AnalyticsView from './components/AnalyticsView';
-import AuditLogView from './components/AuditLogView';
 import UploadView from './components/UploadView';
 import DocumentDetailsView from './components/ai/DocumentDetailsView';
-import AISettings from './pages/AISettings';
-import ExtractionAnalyticsPanel from './components/ExtractionAnalyticsPanel';
-import SchemaRegistryView from './components/SchemaRegistryView';
 import {
   getDashboardStats,
 } from './api/dashboard';
@@ -72,7 +62,6 @@ export default function App() {
   });
 
   // Modals & Drawers
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
@@ -132,6 +121,7 @@ export default function App() {
       setTotalCount(result.total || 0);
       setTotalPages(result.total_pages || 1);
       setBackendConnected(true);
+      setDashboardError(null);
     } catch (err) {
       console.error('Failed to load documents:', err);
       setBackendConnected(false);
@@ -167,15 +157,8 @@ export default function App() {
     } else if (rawPath === 'upload') {
       setActiveTab('upload');
       setDetailDocId(null);
-    } else if (
-      rawPath === 'settings/ai' ||
-      rawPath === 'ai-settings' ||
-      rawPath === 'ai'
-    ) {
-      setActiveTab('ai-settings');
-      setDetailDocId(null);
-    } else if (['reports', 'audit', 'settings', 'schemas'].includes(rawPath)) {
-      setActiveTab(rawPath);
+    } else {
+      setActiveTab('dashboard');
       setDetailDocId(null);
     }
   }, [location.pathname]);
@@ -185,11 +168,7 @@ export default function App() {
     setActiveTab(tabId);
     setDetailDocId(null);
     setPage(1);
-    if (tabId === 'ai-settings') {
-      navigate('/settings/ai');
-    } else {
-      navigate(`/${tabId}`);
-    }
+    navigate(`/${tabId}`);
     if (tabId === 'review') {
       setFilters((prev) => ({ ...prev, status: 'NEEDS_REVIEW' }));
     } else if (tabId === 'documents' || tabId === 'invoices' || tabId === 'dashboard') {
@@ -336,42 +315,17 @@ export default function App() {
       case 'document-detail':
         return {
           title: 'Document Details',
-          subtitle: 'Coming in the next implementation step.',
+          subtitle: 'Inspect document preview, extracted fields, and processing runs.',
         };
       case 'review':
         return {
           title: 'Human Review',
-          subtitle: 'Coming in the next implementation step.',
+          subtitle: 'Verify and approve extracted document data.',
         };
       case 'upload':
         return {
-          title: 'Upload',
-          subtitle: 'Coming in the next implementation step.',
-        };
-      case 'reports':
-        return {
-          title: 'Interactive Analytics & Reports',
-          subtitle: 'Real-time extraction accuracy, pipeline stage latency, confidence distributions, and format throughput.',
-        };
-      case 'audit':
-        return {
-          title: 'Audit & Compliance Logs',
-          subtitle: 'Immutable chronological trace of document ingestion, AI reconciliation, human edits, and validation history.',
-        };
-      case 'settings':
-        return {
-          title: 'System Settings & Pipeline Configuration',
-          subtitle: 'Configure confidence routing thresholds, AI extraction models, OCR fallbacks, and integration endpoints.',
-        };
-      case 'ai-settings':
-        return {
-          title: 'AI & LLM',
-          subtitle: 'Configure AI-powered document extraction.',
-        };
-      case 'schemas':
-        return {
-          title: 'Universal Schema Registry',
-          subtitle: 'Dynamic schema definitions, canonical key bindings, deterministic DSL validation rules, and mathematical insights.',
+          title: 'Upload Document',
+          subtitle: 'Ingest and process documents with automated OCR and extraction.',
         };
       default:
         return {
@@ -428,17 +382,11 @@ export default function App() {
             </div>
 
             <div className="page-actions-group">
-              {(activeTab === 'invoices' || activeTab === 'documents' || activeTab === 'dashboard') && (
+              {(activeTab === 'invoices' || activeTab === 'documents') && (
                 <button
                   type="button"
                   className={`btn btn-secondary ${activeFilterCount > 0 ? 'active-filter-btn' : ''}`}
-                  onClick={() => {
-                    if (activeTab === 'dashboard') {
-                      handleTabChange('documents');
-                    } else {
-                      setIsFilterOpen(true);
-                    }
-                  }}
+                  onClick={() => setIsFilterOpen(true)}
                 >
                   <Filter size={15} />
                   <span>Advanced Filter</span>
@@ -447,15 +395,6 @@ export default function App() {
                   )}
                 </button>
               )}
-
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => navigate('/upload')}
-              >
-                <Upload size={15} />
-                <span>Upload</span>
-              </button>
 
               <button
                 type="button"
@@ -495,76 +434,6 @@ export default function App() {
               }}
               onOpenView={(id) => navigate(`/documents/${id}`)}
             />
-          ) : activeTab === 'ai-settings' ? (
-            <AISettings />
-          ) : activeTab === 'schemas' ? (
-            <SchemaRegistryView />
-          ) : activeTab === 'reports' ? (
-            <AnalyticsView stats={stats} />
-          ) : activeTab === 'audit' ? (
-            <AuditLogView />
-          ) : activeTab === 'settings' ? (
-            <div className="settings-panel-card">
-              <div className="settings-card-header">
-                <div className="settings-icon-circle">
-                  <Sliders size={22} className="text-primary" />
-                </div>
-                <div>
-                  <h3 className="settings-header-title">IDP Engine Configuration</h3>
-                  <p className="settings-header-sub">Configure automated reconciliation rules, OCR engine preferences, and HITL confidence routing parameters.</p>
-                </div>
-              </div>
-              <div className="settings-grid">
-                <div className="settings-item">
-                  <label className="settings-label">Confidence Routing Threshold</label>
-                  <div className="settings-input-group">
-                    <input type="number" defaultValue="85" min="50" max="99" className="settings-input" />
-                    <span className="settings-unit">%</span>
-                  </div>
-                  <span className="settings-hint">Extractions scoring below this threshold are automatically routed to the Human Review Queue.</span>
-                </div>
-
-                <div className="settings-item">
-                  <label className="settings-label">AI Extraction Model</label>
-                  <select defaultValue="gemini-2.5-flash" className="settings-input">
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Production Default)</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (High Precision)</option>
-                    <option value="gpt-4o">GPT-4o Document Intelligence</option>
-                  </select>
-                  <span className="settings-hint">LLM engine invoked when rule-based extraction confidence is incomplete.</span>
-                </div>
-
-                <div className="settings-item">
-                  <label className="settings-label">OCR Preprocessing Fallback</label>
-                  <select defaultValue="tesseract" className="settings-input">
-                    <option value="tesseract">Tesseract OCR (Local, Fast)</option>
-                    <option value="easyocr">EasyOCR (Deep Learning)</option>
-                    <option value="cloud">Cloud Vision OCR</option>
-                  </select>
-                  <span className="settings-hint">Used for scanned or image-based invoices with low digital text density.</span>
-                </div>
-
-                <div className="settings-item">
-                  <label className="settings-label">Maximum Upload Size</label>
-                  <div className="settings-input-group">
-                    <input type="number" defaultValue="10" min="1" max="50" className="settings-input" />
-                    <span className="settings-unit">MB</span>
-                  </div>
-                  <span className="settings-hint">Hard limit enforced on multi-part file uploads (PDF, PNG, JPG, CSV, XLSX).</span>
-                </div>
-              </div>
-
-              <div className="settings-actions-footer">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => showToast('Pipeline settings saved successfully!', 'success')}
-                >
-                  <ShieldCheck size={16} />
-                  <span>Save Configuration</span>
-                </button>
-              </div>
-            </div>
           ) : (
             <>
               {/* Dashboard Error State if backend unreachable */}
@@ -593,12 +462,11 @@ export default function App() {
               ) : (
                 <>
                   {/* Statistics Cards Grid with loading skeleton state (never fake numbers) */}
-                  <StatsCards stats={stats} isLoading={isLoadingStats} />
-
-                  {/* Extraction Record Analytics Panel */}
-                  {activeTab === 'dashboard' && (
-                    <ExtractionAnalyticsPanel stats={stats} isLoading={isLoadingStats} />
-                  )}
+                  <StatsCards
+                    stats={stats}
+                    isLoading={isLoadingStats}
+                    onNavigate={(path) => navigate(path)}
+                  />
 
                   {/* Document Management Section Header */}
                   <div className="section-header-row">
@@ -651,7 +519,6 @@ export default function App() {
                         setIsFilterOpen(true);
                       }
                     }}
-                    onUploadClick={() => navigate('/upload')}
                     isDashboard={activeTab === 'dashboard'}
                     onViewDetails={(id) => navigate(`/documents/${id}`)}
                     onReviewDocument={() => navigate('/review')}
@@ -668,18 +535,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* 5. Upload Modal */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
-        onUploadSuccess={() => {
-          showToast('Document uploaded successfully!', 'success');
-          loadStats();
-          loadDocuments();
-        }}
-      />
-
-      {/* 6. Document Viewer & Verification Modal */}
+      {/* Document Viewer & Verification Modal */}
       <DocumentViewerModal
         docId={selectedDocId}
         isOpen={isViewerOpen}

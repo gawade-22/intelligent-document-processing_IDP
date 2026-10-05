@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Search,
   Filter,
-  Upload,
   MoreVertical,
   Eye,
   CheckSquare,
@@ -34,7 +33,6 @@ export default function DocumentTable({
   onProcessDocument,
   onBatchProcess,
   onAdvancedFilter,
-  onUploadClick,
   onDeleteDocument,
   onBatchDelete,
   isLoading = false,
@@ -202,7 +200,7 @@ export default function DocumentTable({
           )}
 
           {/* Advanced Filter Button */}
-          {onAdvancedFilter && (
+          {!isDashboard && onAdvancedFilter && (
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -211,19 +209,6 @@ export default function DocumentTable({
             >
               <Filter size={14} />
               <span>Advanced Filter</span>
-            </button>
-          )}
-
-          {/* Upload Button */}
-          {onUploadClick && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={onUploadClick}
-              title="Upload New Document"
-            >
-              <Upload size={14} />
-              <span>Upload</span>
             </button>
           )}
         </div>
@@ -311,18 +296,8 @@ export default function DocumentTable({
                     <p className="empty-desc">
                       {searchTerm
                         ? `No documents match "${searchTerm}". Try a different keyword.`
-                        : 'Get started by uploading your first document to begin processing.'}
+                        : 'No documents yet. Go to the Upload section in the sidebar to upload and process documents.'}
                     </p>
-                    {onUploadClick && (
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm mt-3"
-                        onClick={onUploadClick}
-                      >
-                        <Upload size={14} />
-                        <span>Upload your first document</span>
-                      </button>
-                    )}
                   </div>
                 </td>
               </tr>

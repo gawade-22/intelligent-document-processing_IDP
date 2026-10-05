@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import StatCard from './StatCard';
 
-export default function StatsCards({ stats = null, isLoading = false }) {
+export default function StatsCards({ stats = null, isLoading = false, onNavigate }) {
   // Format average confidence percentage
   const formatConfidence = (val) => {
     if (val === null || val === undefined) return '—';
@@ -27,18 +27,22 @@ export default function StatsCards({ stats = null, isLoading = false }) {
         label="TOTAL PROCESSED"
         value={isReady ? stats.total_processed : '—'}
         variant="blue"
-        supportingText={isReady ? 'Reconciled & routed' : 'Loading stats...'}
+        supportingText={isReady ? 'All ingested documents' : 'Loading stats...'}
         isLoading={!isReady}
+        onClick={onNavigate ? () => onNavigate('/documents') : undefined}
+        title={onNavigate ? 'View all documents' : undefined}
       />
 
       {/* 2. Total Verified -> Green */}
       <StatCard
         icon={CheckCircle2}
-        label="TOTAL VERIFIED"
+        label="VERIFIED"
         value={isReady ? stats.total_verified : '—'}
         variant="green"
         supportingText={isReady ? 'Approved extractions' : 'Loading stats...'}
         isLoading={!isReady}
+        onClick={onNavigate ? () => onNavigate('/documents') : undefined}
+        title={onNavigate ? 'View verified documents' : undefined}
       />
 
       {/* 3. Needs Review -> Amber / Orange */}
@@ -50,11 +54,13 @@ export default function StatsCards({ stats = null, isLoading = false }) {
         supportingText={
           isReady
             ? stats.total_needing_review > 0
-              ? 'Awaiting human triage'
-              : 'Queue clear'
+              ? 'Click to review queue'
+              : 'All clear'
             : 'Loading stats...'
         }
         isLoading={!isReady}
+        onClick={onNavigate ? () => onNavigate('/review') : undefined}
+        title={onNavigate ? 'Go to Review Queue' : undefined}
       />
 
       {/* 4. Average Confidence -> Neutral / Blue */}
@@ -63,7 +69,7 @@ export default function StatsCards({ stats = null, isLoading = false }) {
         label="AVERAGE CONFIDENCE"
         value={isReady ? formatConfidence(stats.average_confidence) : '—'}
         variant="neutral"
-        supportingText={isReady ? 'Target threshold: ≥85%' : 'Loading stats...'}
+        supportingText={isReady ? 'Target benchmark: ≥ 85%' : 'Loading stats...'}
         isLoading={!isReady}
       />
     </div>

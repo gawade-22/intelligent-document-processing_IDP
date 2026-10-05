@@ -14,3 +14,5 @@ opencv-python>=4.10.0
 Pillow>=10.4.0
 pdf2image>=1.17.0
 httpx>=0.27.0
+paddlepaddle>=3.0.0
+paddleocr>=3.0.0

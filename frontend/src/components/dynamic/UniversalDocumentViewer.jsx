@@ -15,7 +15,6 @@ import {
   Check,
   ChevronRight,
   ExternalLink,
-  GitCompare,
 } from 'lucide-react';
 import EvidenceViewer from './EvidenceViewer';
 import DynamicSections from './DynamicSections';
@@ -271,12 +270,6 @@ export default function UniversalDocumentViewer({
                   {classification.primary_type || 'Universal Document'}
                 </span>
 
-                {classification.family && (
-                  <span className="uv-badge uv-badge-family">
-                    {classification.family}
-                  </span>
-                )}
-
                 {/* Status Badge */}
                 {isVerified ? (
                   <span className="uv-badge uv-badge-verified">
@@ -291,14 +284,8 @@ export default function UniversalDocumentViewer({
 
               <div className="uv-meta-row">
                 <span>
-                  Calibrated Confidence: <strong>{confDisplay}</strong>
+                  Confidence: <strong>{confDisplay}</strong>
                 </span>
-                <span>•</span>
-                <span>
-                  Schema: <strong>{schemaInfo.name || 'Dynamic'}</strong> ({schemaInfo.origin || 'discovered'})
-                </span>
-                <span>•</span>
-                <span>Run ID: <code className="text-slate-500">{docData?.latest_run?.run_id || 'v2'}</code></span>
               </div>
             </div>
           </div>
@@ -319,16 +306,6 @@ export default function UniversalDocumentViewer({
             >
               <Download size={14} className={isDownloadingReport ? 'animate-bounce' : ''} />
               <span>{isDownloadingReport ? 'Generating PDF...' : 'Download PDF Report'}</span>
-            </button>
-
-            <button
-              type="button"
-              className="uv-btn uv-btn-secondary"
-              onClick={() => setIsComparisonOpen(true)}
-              title="Compare pipeline runs side-by-side"
-            >
-              <GitCompare size={14} />
-              <span>Compare Runs</span>
             </button>
 
             <button
@@ -396,21 +373,10 @@ export default function UniversalDocumentViewer({
                   <div>
                     <h3 className="uv-pane-title">Extracted Information</h3>
                     <p className="uv-pane-subtitle">
-                      {fields.length} target fields extracted • {confDisplay} calibrated confidence
+                      {fields.length} fields extracted • {confDisplay} confidence
                     </p>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  className="uv-btn uv-btn-primary"
-                  onClick={handleDownloadPdfReport}
-                  disabled={isDownloadingReport}
-                  title="Generate and download PDF summary report"
-                >
-                  <Download size={13} className={isDownloadingReport ? 'animate-bounce' : ''} />
-                  <span>{isDownloadingReport ? 'Generating...' : 'Download PDF Report'}</span>
-                </button>
               </div>
 
               {/* Single Scrollable Extracted Content */}

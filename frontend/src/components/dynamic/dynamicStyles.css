@@ -245,7 +245,7 @@
 
 /* Left Pane: Evidence Viewer */
 .uv-left-pane {
-  background: #0f172a;
+  background: #f1f5f9;
   border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
@@ -254,14 +254,14 @@
 }
 
 .uv-evidence-bar {
-  background: #1e293b;
-  padding: 10px 16px;
+  background: #ffffff;
+  padding: 10px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid #334155;
-  color: #f1f5f9;
-  font-size: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #1e293b;
+  font-size: 12.5px;
 }
 
 .uv-evidence-controls {
@@ -271,9 +271,9 @@
 }
 
 .uv-icon-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cbd5e1;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
   padding: 5px 9px;
   border-radius: 6px;
   font-size: 12px;
@@ -282,11 +282,13 @@
   gap: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .uv-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #94a3b8;
 }
 
 .uv-doc-canvas-wrapper {
@@ -297,13 +299,15 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  background: #f1f5f9;
 }
 
 .uv-preview-container {
   position: relative;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  border-radius: 4px;
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.08);
+  border-radius: 6px;
   background: #ffffff;
+  border: 1px solid #cbd5e1;
   overflow: hidden;
   max-width: 100%;
 }
@@ -323,13 +327,13 @@
   border-radius: 3px;
   pointer-events: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 12px rgba(37, 99, 235, 0.4);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8), 0 0 12px rgba(37, 99, 235, 0.35);
   animation: pulseHighlight 1.5s ease-in-out infinite;
 }
 
 @keyframes pulseHighlight {
-  0%, 100% { border-color: #2563eb; background: rgba(37, 99, 235, 0.22); }
-  50% { border-color: #3b82f6; background: rgba(59, 130, 246, 0.35); }
+  0%, 100% { border-color: #2563eb; background: rgba(37, 99, 235, 0.20); }
+  50% { border-color: #1d4ed8; background: rgba(59, 130, 246, 0.32); }
 }
 
 .uv-bbox-label {
@@ -344,26 +348,28 @@
   border-radius: 4px;
   white-space: nowrap;
   letter-spacing: 0.03em;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
 /* Evidence Card Overlay */
 .uv-evidence-card-drawer {
-  background: #1e293b;
-  border-top: 1px solid #334155;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
   padding: 12px 18px;
-  color: #e2e8f0;
+  color: #1e293b;
   font-size: 12px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .uv-evidence-quote-box {
-  background: rgba(15, 23, 42, 0.6);
-  border-left: 3px solid #3b82f6;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-left: 3px solid #2563eb;
   padding: 8px 12px;
   border-radius: 0 6px 6px 0;
   margin-top: 6px;
   font-style: italic;
-  color: #cbd5e1;
+  color: #334155;
   word-break: break-word;
 }
 

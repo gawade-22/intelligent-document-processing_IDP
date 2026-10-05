@@ -138,6 +138,33 @@ def _ocr_page_image(
     page_width: float,
     page_height: float,
 ) -> List[ContentBlock]:
+    """Runs OCR (PaddleOCR by default or Tesseract fallback) on a page image and returns ContentBlocks."""
+    engine_choice = getattr(settings, "OCR_ENGINE", "paddleocr").lower().strip()
+
+    if engine_choice == "paddleocr":
+        try:
+            from app.services.ocr.paddle_engine import paddle_ocr_engine
+            if paddle_ocr_engine.is_available():
+                blocks = paddle_ocr_engine.extract_blocks_from_image(
+                    image, page_number, page_width, page_height
+                )
+                if blocks:
+                    return blocks
+        except Exception as exc:
+            logger.warning(
+                f"PaddleOCR execution failed on page {page_number}: {exc}. "
+                "Falling back to Tesseract OCR."
+            )
+
+    return _ocr_page_image_tesseract(image, page_number, page_width, page_height)
+
+
+def _ocr_page_image_tesseract(
+    image: Image.Image,
+    page_number: int,
+    page_width: float,
+    page_height: float,
+) -> List[ContentBlock]:
     """Runs Tesseract OCR on a page image and groups words into content blocks with bounding boxes."""
     blocks: List[ContentBlock] = []
 
