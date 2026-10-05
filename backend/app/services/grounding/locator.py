@@ -19,10 +19,16 @@ class GroundingService:
     """Performs grounding verification and bounding box calculation for extracted fields."""
 
     def _normalize(self, text: str) -> str:
-        """Lowercases and normalizes whitespace."""
+        """Lowercases, strips special unicode symbols/bullets, and normalizes whitespace."""
         if not text:
             return ""
-        return re.sub(r"\s+", " ", str(text).lower().strip())
+        t = str(text)
+        # Normalize replacement character, bullets, and non-printable control chars
+        t = re.sub(r"[\ufffd\u2022\u25cf\*\x00-\x08\x0b\x0c\x0e-\x1f]", " ", t)
+        t = re.sub(r"[\u2018\u2019]", "'", t)
+        t = re.sub(r"[\u201c\u201d]", '"', t)
+        t = re.sub(r"[\u2013\u2014\u2212]", "-", t)
+        return re.sub(r"\s+", " ", t).lower().strip()
 
     def verify_and_locate(
         self,
@@ -61,43 +67,66 @@ class GroundingService:
         best_block: Optional[ContentBlock] = None
         matched_blocks: List[ContentBlock] = []
 
-        # 1. Exact Substring Search
+        # 1. Exact Substring Search & Prefix Containment
         for block in ordered_candidates:
             norm_btext = self._normalize(block.text)
             if not norm_btext:
                 continue
 
-            # Check if quote is contained in block
-            if norm_quote and norm_quote in norm_btext:
+            # Check if quote is contained in block, or block is contained in quote
+            if norm_quote and (norm_quote in norm_btext or (len(norm_btext) >= 15 and norm_btext in norm_quote)):
                 matched_blocks.append(block)
                 best_score = 1.0
                 break
 
+            # For longer quotes, check first 30 chars or first line
+            if norm_quote and len(norm_quote) >= 20:
+                first_chunk = norm_quote[:35].strip()
+                if first_chunk and first_chunk in norm_btext:
+                    matched_blocks.append(block)
+                    best_score = 0.98
+                    break
+
             # Check if raw value is contained in block
-            if norm_val and len(norm_val) >= 2 and norm_val in norm_btext:
+            if norm_val and len(norm_val) >= 2 and (norm_val in norm_btext or (len(norm_btext) >= 15 and norm_btext in norm_val)):
                 matched_blocks.append(block)
                 best_score = 0.95
                 break
 
-        # 2. Fuzzy Substring Search (if no exact match found)
+            # For longer values, check first 30 chars
+            if norm_val and len(norm_val) >= 25:
+                first_chunk_val = norm_val[:35].strip()
+                if first_chunk_val and first_chunk_val in norm_btext:
+                    matched_blocks.append(block)
+                    best_score = 0.92
+                    break
+
+        # 2. Token Overlap & Fuzzy Search (if no exact match found)
         if not matched_blocks and (norm_quote or norm_val):
             search_target = norm_quote if norm_quote else norm_val
+            target_words = [w for w in re.findall(r"[a-zA-Z0-9]+", search_target) if len(w) >= 3]
+
             for block in ordered_candidates:
                 norm_btext = self._normalize(block.text)
                 if not norm_btext:
                     continue
 
-                # Quick length check to avoid comparing massive blocks
-                if len(search_target) > len(norm_btext) * 3:
-                    continue
+                # Token overlap scoring
+                if target_words:
+                    matched_words = sum(1 for w in target_words if w in norm_btext)
+                    word_ratio = matched_words / len(target_words)
+                    if word_ratio > best_score:
+                        best_score = word_ratio
+                        best_block = block
 
-                # Sliding window / SequenceMatcher
-                ratio = SequenceMatcher(None, search_target, norm_btext).ratio()
-                if ratio > best_score:
-                    best_score = ratio
-                    best_block = block
+                # SequenceMatcher comparison
+                if len(search_target) <= len(norm_btext) * 3:
+                    ratio = SequenceMatcher(None, search_target, norm_btext).ratio()
+                    if ratio > best_score:
+                        best_score = ratio
+                        best_block = block
 
-            if best_score >= 0.70 and best_block:
+            if best_score >= 0.65 and best_block:
                 matched_blocks.append(best_block)
 
         # 3. Calculate Bounding Box Union

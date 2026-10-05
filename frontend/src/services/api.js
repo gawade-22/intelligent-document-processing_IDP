@@ -72,9 +72,9 @@ export async function fetchReviewDocuments() {
   return response.json();
 }
 
-export async function uploadDocument(file) {
-  // Strangler Cutover: Route legacy upload requests directly to the Universal Dynamic Pipeline (v2)
-  const result = await uploadDocumentV2(file, true);
+export async function uploadDocument(file, runAsync = true) {
+  // Route upload requests directly to the Universal Dynamic Pipeline (v2)
+  const result = await uploadDocumentV2(file, runAsync);
   return {
     id: result.document_id,
     ...result,

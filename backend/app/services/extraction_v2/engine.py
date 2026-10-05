@@ -31,8 +31,8 @@ SYSTEM_PROMPT = """You are a precision information extraction engine for an Inte
 Your job is to extract requested target fields from the provided document text according to the target schema.
 
 STRICT EXTRACTION RULES:
-1. "value": The extracted clean value (string, number, date, etc.). If not found in the text, return null.
-2. "quote": An EXACT, VERBATIM excerpt from the document text containing the value. Never paraphrase or invent a quote.
+1. "value": The extracted clean value (string, number, date, text block). If not found in the text, return null. Never hallucinate.
+2. "quote": An EXACT, VERBATIM excerpt from the document text containing the value. For long sections or multi-line blocks (e.g. skills, experience, education, summary), pick the first distinctive line or 5-15 word phrase verbatim from that section in the text.
 3. "page": The 1-indexed page number where the quote appears.
 4. "confidence": A float from 0.0 to 1.0 representing extraction certainty.
 
@@ -108,25 +108,54 @@ class UniversalExtractionEngine:
 
         # 4. Major Section block extraction (Skills, Summary, Education, Experience, Projects, Certifications)
         SECTION_MAP = [
-            ("summary", ("summary", "profile", "objective", "executive summary", "about me", "professional summary")),
-            ("skills", ("skill", "competenc", "technolog", "tools", "expertise", "proficienc")),
-            ("experience", ("experience", "employment", "internship", "work history", "career")),
-            ("projects", ("project", "featured projects")),
-            ("education", ("education", "academic", "qualification", "degree", "university", "college")),
-            ("certifications", ("certif", "license", "course", "training")),
-            ("achievements", ("achievement", "award", "honor")),
-            ("languages", ("language",)),
+            ("summary", ("professional summary", "executive summary", "about me", "summary", "profile", "objective")),
+            ("skills", ("technical skills", "skills & competencies", "core competencies", "skills", "technologies", "tools")),
+            ("experience", ("work experience", "experience", "employment", "internship", "work history", "career")),
+            ("projects", ("featured projects", "academic projects", "projects", "project")),
+            ("education", ("education history", "education", "academic background", "academics", "qualification", "degree", "university", "college")),
+            ("certifications", ("certifications", "certification", "courses", "licenses", "training")),
+            ("achievements", ("achievements", "awards", "honors")),
+            ("languages", ("languages", "language proficiency")),
         ]
 
-        def get_major_section_type(text: str) -> Optional[str]:
-            t = text.lower().strip().strip(":").strip("-").strip()
-            if not t or len(t) > 40:
-                return None
-            for sec_name, keywords in SECTION_MAP:
-                for kw in keywords:
-                    if kw in t:
-                        return sec_name
-            return None
+        def parse_document_sections(blocks) -> Dict[str, Tuple[str, str]]:
+            sections: Dict[str, List[str]] = {}
+            current_sec = None
+
+            for b in blocks:
+                lines = [ln.strip() for ln in b.text.splitlines() if ln.strip()]
+                for line in lines:
+                    clean_l = re.sub(r"[^a-zA-Z0-9\s]", "", line).lower().strip()
+                    matched_sec = None
+                    if clean_l and len(clean_l) <= 40:
+                        for sec_name, kws in SECTION_MAP:
+                            for kw in kws:
+                                if clean_l == kw or clean_l == kw + "s" or clean_l.startswith(kw + " ") or clean_l.endswith(" " + kw):
+                                    matched_sec = sec_name
+                                    break
+                            if matched_sec:
+                                break
+
+                    if matched_sec:
+                        current_sec = matched_sec
+                        if current_sec not in sections:
+                            sections[current_sec] = []
+                    elif current_sec:
+                        clean_content_line = re.sub(r"^[\ufffd\u2022\u25cf\*\-\s]+", "", line).strip()
+                        if clean_content_line:
+                            sections[current_sec].append(clean_content_line)
+
+            results: Dict[str, Tuple[str, str]] = {}
+            for sec_name, lines_list in sections.items():
+                if lines_list:
+                    full_text = "\n".join(lines_list)
+                    best_quote = lines_list[0]
+                    for ln in lines_list:
+                        if len(ln) >= 10:
+                            best_quote = ln[:60]
+                            break
+                    results[sec_name] = (full_text, best_quote)
+            return results
 
         # Determine target section for f_key
         target_section = None
@@ -136,25 +165,9 @@ class UniversalExtractionEngine:
                 break
 
         if target_section:
-            # Find the starting block
-            for idx, b in enumerate(udoc.blocks):
-                b_sec = get_major_section_type(b.text)
-                if b_sec == target_section:
-                    content = []
-                    # Collect blocks until the next major section header
-                    for next_b in udoc.blocks[idx + 1:]:
-                        next_sec = get_major_section_type(next_b.text)
-                        if next_sec is not None and next_sec != target_section:
-                            break
-                        txt = next_b.text.strip()
-                        if txt:
-                            content.append(txt)
-                    if content:
-                        full_val = "\n".join(content)
-                        # Use first line or first block text as quote for exact grounding
-                        first_line = content[0].split("\n")[0].strip()
-                        quote = first_line if len(first_line) >= 4 else content[0]
-                        return full_val, quote
+            doc_sections = parse_document_sections(udoc.blocks)
+            if target_section in doc_sections:
+                return doc_sections[target_section]
 
         # 5. Financial totals / amounts
         if f_dtype in ("money", "number") or any(k in norm_key for k in ("total", "amount", "subtotal", "balance")):
@@ -293,9 +306,16 @@ class UniversalExtractionEngine:
             if isinstance(quote, list):
                 quote = " ".join(str(x) for x in quote)
 
-            # Fallback to structural heuristic extraction if LLM missed this field
-            if not raw_val:
-                raw_val, quote = self._extract_heuristic_fallback(f_key, f_dtype, udoc, doc_text)
+            # Fallback to structural heuristic extraction if LLM missed or failed on this field
+            if not raw_val or str(raw_val).strip().lower() in ("null", "none", "not found", "n/a", "not detected", ""):
+                fb_val, fb_quote = self._extract_heuristic_fallback(f_key, f_dtype, udoc, doc_text)
+                if fb_val:
+                    raw_val = fb_val
+                    quote = fb_quote
+
+            # Ensure quote exists for grounding if value was found
+            if raw_val and (not quote or not str(quote).strip()):
+                quote = str(raw_val).split("\n")[0][:60]
 
             # 2. Grounding Check & Bounding Box Calculation
             evidence: FieldEvidence = grounding_service.verify_and_locate(

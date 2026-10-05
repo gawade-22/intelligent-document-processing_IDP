@@ -63,6 +63,7 @@ class DocumentUploadResponse(BaseModel):
     status: str
     stage: str
     message: str
+    confidence_score: Optional[float] = None
 
 
 class FieldUpdateRequest(BaseModel):
@@ -156,6 +157,11 @@ async def upload_document_v2(
     else:
         process_document_v2_async(document.id, run_id)
         db.refresh(run)
+        db.refresh(document)
+
+    conf_score = None
+    if not run_async and run.metrics:
+        conf_score = run.metrics.get("doc_confidence")
 
     return DocumentUploadResponse(
         document_id=document.id,
@@ -166,7 +172,8 @@ async def upload_document_v2(
         file_hash=document.file_hash,
         status=run.status,
         stage=run.stage,
-        message="Document uploaded successfully and queued for processing.",
+        confidence_score=conf_score,
+        message="Document uploaded successfully and queued for processing." if run_async else f"Document processed with status: {run.status}.",
     )
 
 

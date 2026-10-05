@@ -81,19 +81,15 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     setSuccessMsg(null);
 
     try {
-      // 1. Upload to backend
-      const uploadResult = await uploadDocument(selectedFile);
+      // 1. Upload & Process via Universal Pipeline
+      if (isProcessingImmediately) {
+        setSuccessMsg(`Document uploaded. Running AI processing pipeline (${extractionMethod})...`);
+      }
+      const uploadResult = await uploadDocument(selectedFile, !isProcessingImmediately);
       const docId = uploadResult.id || uploadResult.document_id;
 
-      // 2. Optionally trigger automated processing
       if (isProcessingImmediately && docId) {
-        setSuccessMsg(`Document uploaded. Running AI processing pipeline (${extractionMethod}) for ID #${docId}...`);
-        try {
-          await runAIExtraction(docId, extractionMethod, documentType !== 'auto' ? documentType : undefined);
-          setSuccessMsg(`Document successfully uploaded and processed!`);
-        } catch (procErr) {
-          setSuccessMsg(`Uploaded successfully. Note: Automated pipeline encountered: ${procErr.message}`);
-        }
+        setSuccessMsg(`Document #${docId} successfully uploaded and processed (${uploadResult.status || 'VERIFIED'})!`);
       } else {
         setSuccessMsg(`Document #${docId} successfully uploaded to queue.`);
       }

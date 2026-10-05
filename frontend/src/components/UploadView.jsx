@@ -89,21 +89,15 @@ export default function UploadView({ onUploadComplete, onViewDocument }) {
     setErrorMsg(null);
 
     try {
-      // 1. Upload to backend
-      const uploadResp = await uploadDocument(selectedFile);
+      // 1. Upload & Process via Universal Pipeline (synchronous when autoProcess is true)
+      const uploadResp = await uploadDocument(selectedFile, !autoProcess);
       const docId = uploadResp.id || uploadResp.document_id;
-
-      let processResp = null;
-      if (autoProcess && docId) {
-        // 2. Trigger pipeline extraction immediately with chosen extraction method
-        processResp = await runAIExtraction(docId, extractionMethod, documentType !== 'auto' ? documentType : undefined);
-      }
 
       setSuccessResult({
         docId,
         fileName: selectedFile.name,
-        status: processResp?.status || uploadResp.status || 'UPLOADED',
-        confidence: processResp?.confidence_score,
+        status: uploadResp.status || 'UPLOADED',
+        confidence: uploadResp.confidence_score,
       });
 
       setSelectedFile(null);

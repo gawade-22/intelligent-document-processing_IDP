@@ -556,14 +556,22 @@ class DocumentProcessingPipeline:
             if doc_type_classified == "invoice":
                 doc_overall_conf = routing_decision.overall_confidence
             else:
-                valid_confs = [v.get("confidence", 0.0) for v in final_fields_dict.values() if v.get("value") is not None]
-                doc_overall_conf = round(sum(valid_confs) / max(len(valid_confs), 1), 2) if valid_confs else 0.50
-                if doc_overall_conf >= 0.75 and len(valid_confs) >= 2:
+                # Include all schema fields in confidence calculation
+                all_confs = [v.get("confidence", 0.0) if v.get("value") is not None else 0.0 for v in final_fields_dict.values()]
+                missing_fields = [k for k, v in final_fields_dict.items() if v.get("value") is None or str(v.get("value")).strip() == ""]
+                doc_overall_conf = round(sum(all_confs) / max(len(all_confs), 1), 2) if all_confs else 0.50
+
+                # Mark as VERIFIED only if confidence >= 0.85 and no critical fields are completely missing
+                if doc_overall_conf >= 0.85 and len(missing_fields) == 0:
                     final_status = RoutingStatus.VERIFIED.value
                     review_reason_str = None
                 else:
                     final_status = RoutingStatus.NEEDS_REVIEW.value
-                    review_reason_str = "Document fields require verification"
+                    if missing_fields:
+                        missing_names = ", ".join(k.replace("_", " ").title() for k in missing_fields[:3])
+                        review_reason_str = f"Fields missing or requiring review: {missing_names}"
+                    else:
+                        review_reason_str = "Document confidence below verification threshold"
 
             structured_data: Dict[str, Any] = {
                 "fields": final_fields_dict,
